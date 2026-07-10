@@ -1,0 +1,40 @@
+# Prueba end-to-end del skill rag_qa a través del gateway propio (API),
+# en vez del modelo crudo. Esto valida el pipeline completo: retriever +
+# prompt + modelo, tal como lo usaría un consumidor real del laboratorio.
+#
+# Requiere: docker compose up -d  (api + ollama + phoenix corriendo)
+#           curl -s -X POST http://localhost:8080/rag/ingest   (indexar antes)
+# Ejecutar: promptfoo eval -c promptfooconfig.rag.yaml
+#
+# NOTA sobre variables de entorno: promptfoo NO interpreta la sintaxis bash
+# ${VAR:-default}; solo interpola vía Nunjucks ({{ env.VAR }}).
+
+description: "ai-testing-lab · pruebas end-to-end del skill rag_qa vía API propia"
+
+providers:
+  - id: https
+    config:
+      url: "{{ env.API_BASE_URL | default('http://localhost:8080') }}/agents/rag_qa/run"
+      method: POST
+      headers:
+        Content-Type: application/json
+      body:
+        payload:
+          question: "{{question}}"
+          top_k: 3
+      transformResponse: "json.output"
+
+tests:
+  - description: "Debe responder con información presente en los documentos de ejemplo"
+    vars:
+      question: "¿Con qué se debe escanear un modelo de terceros antes de cargarlo?"
+    assert:
+      - type: icontains
+        value: "modelscan"
+
+  - description: "Debe admitir que no tiene información si la pregunta no está en el contexto"
+    vars:
+      question: "¿Cuál es el precio de la membresía premium del laboratorio?"
+    assert:
+      - type: icontains
+        value: "no tengo suficiente información"

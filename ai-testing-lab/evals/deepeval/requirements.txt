@@ -1,0 +1,9 @@
+deepeval==2.0.9
+pytest==8.3.3
+requests==2.32.3
+
+# Fijados explicitamente: openai==1.51.0 requiere httpx<0.28 (ver
+# docs/security-notes.md, "Incidencias conocidas" - httpx>=0.28 elimino el
+# parametro `proxies` que esta version de openai todavia usa internamente).
+openai==1.51.0
+httpx==0.27.2

@@ -1,0 +1,26 @@
+# Entorno
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# Node (promptfoo)
+node_modules/
+
+# Resultados de evaluación / reportes locales
+evals/ragas/last_run_results.csv
+evals/security/garak/reports/
+evals/security/modelscan/last_scan.json
+.promptfoo/
+
+# Índice RAG persistido localmente (fuera de Docker)
+app/rag/.index/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

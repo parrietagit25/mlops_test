@@ -1,0 +1,29 @@
+# Configuración declarativa de referencia (no leída aún por el código; sirve
+# como documentación viva de qué es configurable y como punto de extensión
+# cuando el registro de skills/proveedores crezca más allá de lo que tiene
+# sentido hardcodear en app/agents/runtime.py).
+
+models:
+  chat:
+    provider: ollama
+    model: llama3.2:1b
+  embeddings:
+    provider: ollama
+    model: nomic-embed-text
+
+skills:
+  - name: summarizer
+    module: app.agents.skills.summarizer_skill
+    class: SummarizerSkill
+  - name: rag_qa
+    module: app.agents.skills.rag_qa_skill
+    class: RagQASkill
+
+rag:
+  chunk_size: 500
+  chunk_overlap: 50
+  top_k: 3
+
+observability:
+  provider: phoenix
+  project_name: ai-testing-lab

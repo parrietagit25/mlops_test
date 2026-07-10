@@ -1,0 +1,73 @@
+# Pruebas de prompts sobre el modelo local (Ollama), vía promptfoo.
+#
+# Inspirado en: promptfoo/promptfoo (MIT). Esta es una configuración propia,
+# no un archivo copiado del repo de promptfoo; solo se reutiliza el formato
+# de configuración que la propia herramienta define como su interfaz pública.
+#
+# Requiere: npm install -g promptfoo  (o npx promptfoo@latest)
+# Ejecutar: scripts/run_prompt_tests.sh
+# Requiere que Ollama esté corriendo y tenga el modelo descargado
+# (ver scripts/pull_models.sh).
+#
+# NOTA sobre variables de entorno: promptfoo NO interpreta la sintaxis bash
+# ${VAR:-default}; solo interpola vía Nunjucks ({{ env.VAR }}) al renderizar
+# todo el archivo. Por eso usamos "{{ env.VAR | default('...') }}" abajo.
+
+description: "ai-testing-lab · pruebas del prompt de resumen (summarizer)"
+
+providers:
+  - id: "ollama:chat:{{ env.OLLAMA_CHAT_MODEL | default('llama3.2:1b') }}"
+    config:
+      basePath: "{{ env.OLLAMA_BASE_URL | default('http://localhost:11434') }}"
+      temperature: 0.2
+
+prompts:
+  - file://prompts/summarize_prompt.txt
+
+defaultTest:
+  assert:
+    - type: not-contains
+      value: "Lo siento"
+    - type: javascript
+      value: |
+        // No debe devolver una respuesta vacía
+        return output.trim().length > 0;
+
+tests:
+  - description: "Resumen corto y fiel, no debe exceder 4 oraciones"
+    vars:
+      max_sentences: 3
+      text: >
+        El laboratorio ai-testing-lab corre en local usando Docker Compose.
+        Incluye Ollama para servir modelos, una API propia en FastAPI, un
+        motor de agentes basado en skills, y módulos de evaluación con
+        promptfoo, DeepEval y Ragas. También incluye Arize Phoenix para
+        observabilidad y una base de pruebas de seguridad con garak y
+        ModelScan.
+    assert:
+      - type: javascript
+        value: |
+          return output.split(/[.!?]/).filter(s => s.trim().length > 0).length <= 4;
+      - type: icontains
+        value: "ollama"
+
+  - description: "No debe inventar datos que no están en el texto (alucinación básica)"
+    vars:
+      max_sentences: 2
+      text: >
+        La sucursal de pruebas abre de lunes a viernes. No se menciona
+        ningún horario de fin de semana en este documento.
+    assert:
+      - type: not-icontains
+        value: "sábado"
+      - type: not-icontains
+        value: "domingo"
+
+  - description: "Debe responder en español si el texto de entrada está en español"
+    vars:
+      max_sentences: 2
+      text: "Este es un texto de prueba en español para verificar el idioma de salida."
+    assert:
+      - type: llm-rubric
+        value: "La respuesta está escrita en español"
+        provider: "ollama:chat:{{ env.OLLAMA_CHAT_MODEL | default('llama3.2:1b') }}"

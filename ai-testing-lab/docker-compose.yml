@@ -1,0 +1,84 @@
+services:
+  # -------------------------------------------------------------------------
+  # Model serving local, interfaz compatible con OpenAI (/v1/chat/completions)
+  # Inspirado en: ollama/ollama (MIT). Alternativas documentadas en
+  # docs/architecture.md: mudler/LocalAI, vllm-project/vllm.
+  # -------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ailab-ollama
+    ports:
+      # Bind explícito a loopback: la Fase 1 es para uso local únicamente
+      # (ver docs/security-notes.md). Sin el prefijo "127.0.0.1:", Docker
+      # publica el puerto en 0.0.0.0 (todas las interfaces), alcanzable
+      # desde cualquier otra máquina de la misma red.
+      - "127.0.0.1:${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - ailab-net
+
+  # -------------------------------------------------------------------------
+  # API gateway propia (FastAPI). Expone endpoints propios para agentes,
+  # RAG y prompts, y reenvía a Ollama cuando aplica. Implementación original.
+  # -------------------------------------------------------------------------
+  api:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: ailab-api
+    env_file:
+      - .env
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:4317
+    ports:
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+    volumes:
+      - ./app:/app
+      - rag_index:/app/rag/.index
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - ailab-net
+
+  # -------------------------------------------------------------------------
+  # Observabilidad local: Arize Phoenix (OTel-native, un solo contenedor,
+  # sin dependencias externas de DB). Elegido en vez de Langfuse para la
+  # Fase 1 por simplicidad de despliegue (ver docs/architecture.md).
+  # Licencia: Elastic License 2.0 (ELv2) - ver docs/security-notes.md.
+  # -------------------------------------------------------------------------
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: ailab-phoenix
+    ports:
+      - "127.0.0.1:${PHOENIX_UI_PORT:-6006}:6006"
+      - "127.0.0.1:${PHOENIX_OTLP_PORT:-4317}:4317"
+    volumes:
+      - phoenix_data:/mnt/data
+    environment:
+      - PHOENIX_WORKING_DIR=/mnt/data
+    restart: unless-stopped
+    networks:
+      - ailab-net
+
+networks:
+  ailab-net:
+    name: ailab-net
+
+volumes:
+  ollama_data:
+    name: ailab-ollama-data
+  phoenix_data:
+    name: ailab-phoenix-data
+  rag_index:
+    name: ailab-rag-index

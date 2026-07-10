@@ -1,0 +1,19 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+pydantic-settings==2.5.2
+openai==1.51.0
+# openai==1.51.0 todavia pasa `proxies=` a httpx.Client internamente; httpx>=0.28
+# elimino ese parametro y rompe la creacion del cliente (ver docs/security-notes.md,
+# "Incidencias conocidas"). Fijado explicitamente para no depender de que pip
+# resuelva por casualidad una version compatible.
+httpx==0.27.2
+numpy==1.26.4
+PyYAML==6.0.2
+python-dotenv==1.0.1
+
+# Observabilidad: instrumentación OpenTelemetry / OpenInference hacia Phoenix
+arize-phoenix-otel==0.6.1
+openinference-instrumentation-openai==0.1.14
+opentelemetry-sdk==1.27.0
+opentelemetry-exporter-otlp==1.27.0

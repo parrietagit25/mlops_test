@@ -1,0 +1,10 @@
+Política de pruebas del laboratorio (documento de ejemplo, ficticio):
+
+1. Todo prompt nuevo debe pasar al menos un caso de prueba en Promptfoo antes
+   de integrarse a un flujo de agente.
+2. Todo pipeline de RAG debe medirse con Ragas usando como mínimo las
+   métricas de faithfulness y answer relevancy.
+3. Todo modelo o artefacto descargado de un tercero debe escanearse con
+   ModelScan antes de cargarse en el entorno local.
+4. Las pruebas de seguridad (red teaming) se ejecutan de forma manual y
+   controlada, nunca contra sistemas de producción sin autorización.

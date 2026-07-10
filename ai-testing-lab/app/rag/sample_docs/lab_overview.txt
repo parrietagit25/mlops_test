@@ -1,0 +1,10 @@
+ai-testing-lab es un laboratorio interno para probar modelos de lenguaje,
+prompts, agentes y sistemas RAG antes de llevarlos a producción.
+
+El laboratorio corre completamente en local durante la Fase 1, usando Ollama
+como motor de modelos y Docker Compose para orquestar los servicios. No
+depende de ningún servicio de nube pago.
+
+Los componentes principales son: un gateway de API propio, un motor de
+agentes basado en "skills" reutilizables, un pipeline de RAG mínimo, y
+módulos de evaluación (promptfoo, DeepEval, Ragas) y seguridad (red teaming).
