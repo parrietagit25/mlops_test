@@ -77,7 +77,10 @@ Abre http://localhost:6006 para ver las trazas en Arize Phoenix.
 ./scripts/run_prompt_tests.sh     # promptfoo
 ./scripts/run_deepeval.sh         # DeepEval
 ./scripts/run_ragas.sh            # Ragas
-./scripts/run_security_checks.sh  # red teaming (promptfoo + garak si está instalado)
+./scripts/run_security_checks.sh  # red teaming (garak + promptfoo redteam, best-effort)
+
+# o las 4 en secuencia, con resumen consolidado en reports/<fecha>/<hora>/summary.md
+./scripts/run_all_evals.sh
 ```
 
 Ver `docs/testing-playbook.md` para cuándo usar cada una y cómo interpretar
@@ -106,6 +109,8 @@ ai-testing-lab/
 ├── observability/
 │   └── phoenix/                # cómo ver trazas, por qué Phoenix y no Langfuse
 ├── scripts/                 # automatización (levantar, probar, validar)
+│   └── lib/                    # helpers compartidos (ej. detección de Python)
+├── reports/                  # resultados de evaluación, organizados por fecha/hora
 ├── docs/                    # arquitectura, playbook, seguridad, Fase 2, diagrama
 └── infra/future/             # diseño de Fase 2 (DigitalOcean, AWS, Azure) — solo diseño
 ```

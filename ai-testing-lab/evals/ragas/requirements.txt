@@ -3,9 +3,14 @@ langchain-openai==0.2.6
 datasets==3.0.1
 requests==2.32.3
 
-# Fijados explicitamente: openai==1.51.0 requiere httpx<0.28 (ver
-# docs/security-notes.md, "Incidencias conocidas" - httpx>=0.28 elimino el
-# parametro `proxies` que esta version de openai todavia usa internamente).
-# langchain-openai==0.2.6 acepta openai>=1.40,<2, por lo que 1.51.0 es compatible.
-openai==1.51.0
+# Fijado explicitamente: la causa raiz del bug de compatibilidad es httpx
+# (ver docs/security-notes.md, "Incidencias conocidas") - httpx>=0.28
+# elimino el parametro `proxies` que el cliente OpenAI todavia usa
+# internamente en varias versiones. NO fijamos una version exacta de
+# `openai` aqui: langchain-openai==0.2.6 exige openai>=1.54.0,<2.0.0,
+# mientras que app/ y evals/deepeval fijan 1.51.0 (sin ese requisito) -
+# forzar la misma version exacta en los 3 requirements.txt genera un
+# conflicto de resolucion irresoluble. Dejamos que pip elija la version de
+# openai que satisfaga a ragas + langchain-openai; httpx==0.27.2 fijado
+# evita el bug sin importar cual openai se resuelva.
 httpx==0.27.2

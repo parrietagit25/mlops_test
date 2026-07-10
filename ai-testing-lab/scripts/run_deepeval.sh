@@ -18,8 +18,10 @@ fi
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate" 2>/dev/null || source "$VENV_DIR/Scripts/activate"
 
-pip install --quiet --upgrade pip
-pip install --quiet -r evals/deepeval/requirements.txt
+# `python -m pip` (no `pip` directo): en Windows, `pip install --upgrade pip`
+# falla porque pip no puede reemplazar su propio .exe mientras corre.
+python -m pip install --quiet --upgrade pip
+python -m pip install --quiet -r evals/deepeval/requirements.txt
 
 echo "==> Ejecutando pytest sobre evals/deepeval"
 (cd evals/deepeval && pytest -v)

@@ -21,10 +21,12 @@ promptfoo, DeepEval, Ragas, garak, ModelScan). Antes de instalar cualquiera:
   compartas los prompts generados fuera de este contexto de red teaming
   defensivo, y no los reutilices para otros fines.
 - **No expongas los puertos del stack a internet** (`11434`, `8080`,
-  `6006`, `4317`). El `docker-compose.yml` de la Fase 1 está pensado para
-  `localhost` únicamente. Si necesitas acceso remoto temporal, usa un
-  túnel SSH, nunca un bind a `0.0.0.0` expuesto directamente sin
-  autenticación.
+  `6006`, `4317`). `docker-compose.yml` los publica explícitamente en
+  `127.0.0.1:<puerto>` (no `0.0.0.0`), así que por defecto solo son
+  alcanzables desde la misma máquina, ni siquiera desde otros equipos de
+  la misma red local. Si necesitas acceso remoto temporal, usa un túnel
+  SSH; no cambies el bind a `0.0.0.0`/quites el prefijo `127.0.0.1:` sin
+  agregar autenticación real delante.
 
 ## 2. Datos sensibles
 
@@ -87,6 +89,39 @@ bugs nuevos si vuelven a aparecer.
   `OpenAI`). **Fix aplicado**: `httpx==0.27.2` fijado explícitamente en
   `app/requirements.txt`, `evals/deepeval/requirements.txt` y
   `evals/ragas/requirements.txt`.
+- **Fijar `openai==1.51.0` a la vez en los 3 requirements.txt genera un
+  conflicto en `evals/ragas`**: `langchain-openai==0.2.6` exige
+  `openai>=1.54.0,<2.0.0`, incompatible con el pin `1.51.0`. La causa raíz
+  del bug original (ver punto anterior) es `httpx`, no la versión exacta
+  de `openai`. **Fix aplicado**: `evals/ragas/requirements.txt` ya no fija
+  una versión exacta de `openai` — deja que `pip` resuelva una versión que
+  satisfaga a `ragas` y `langchain-openai` a la vez, y mantiene
+  `httpx==0.27.2` fijado (eso es lo que realmente evita el bug, sin
+  importar qué versión de `openai` se resuelva).
+- **Ragas con Ollama: timeouts masivos y resultados `NaN`**: por defecto
+  Ragas dispara hasta 16 jobs de evaluación en paralelo (`RunConfig`
+  default `max_workers=16`, `timeout=180s`), pensado para APIs remotas con
+  alta concurrencia. Ollama en CPU sirve con un solo slot de inferencia
+  (`OLLAMA_NUM_PARALLEL=1`), así que la mayoría de esos jobs queda en cola
+  y termina en `TimeoutError` antes de que Ollama llegue a procesarlos
+  (visto en la práctica: 11 de 12 jobs en timeout, CSV casi todo `NaN`).
+  **Fix aplicado**: `evals/ragas/evaluate_rag.py` pasa un `RunConfig`
+  propio (`max_workers=1`, `timeout=600`) que serializa las llamadas para
+  que coincidan con la capacidad real de Ollama.
+- **`langchain_openai.OpenAIEmbeddings` incompatible con el endpoint de
+  embeddings de Ollama**: por defecto pre-tokeniza el texto con `tiktoken`
+  y envía arrays de enteros (token ids) como `input` — algo que la API
+  real de OpenAI acepta pero Ollama rechaza con `400 invalid input type`.
+  **Fix aplicado**: `check_embedding_ctx_length=False` en la instancia de
+  `OpenAIEmbeddings` de `evals/ragas/evaluate_rag.py`, para que envíe
+  texto plano en vez de tokens.
+- **Un modelo pequeño local puede entrar en un bucle de repetición y
+  generar miles de tokens sin parar**: visto en la práctica con
+  `llama3.2:1b` en un prompt interno de Ragas (>5000 tokens generados para
+  lo que debía ser un veredicto corto), lo que además bloquea toda la cola
+  de evaluación al correr en modo serializado. **Fix aplicado**:
+  `max_tokens=512` en el `ChatOpenAI` usado como juez en
+  `evals/ragas/evaluate_rag.py`.
 - **`promptfoo redteam generate` exige verificación por email**: a
   diferencia de `promptfoo eval` (testing normal de prompts, sin
   registro), el comando `redteam generate` pide verificar un correo la
@@ -105,6 +140,12 @@ bugs nuevos si vuelven a aparecer.
   aplicado**: `scripts/lib/find_python.sh` valida cada candidato
   ejecutando `--version` de verdad, probando `python3`, `python` y
   `py -3` en ese orden, no solo su presencia en el PATH.
+- **`pip install --upgrade pip` falla en Windows dentro de un venv recién
+  creado**: pip no puede reemplazar su propio ejecutable mientras está
+  corriendo en Windows, y sugiere usar `python -m pip install --upgrade
+  pip` en su lugar. **Fix aplicado**: `scripts/run_deepeval.sh` y
+  `scripts/run_ragas.sh` usan `python -m pip ...` en vez de `pip ...`
+  directo (forma además más portable entre plataformas).
 
 ## 6. Recomendaciones adicionales
 

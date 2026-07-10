@@ -15,6 +15,12 @@ evals/ragas/last_run_results.csv
 evals/security/garak/reports/
 evals/security/modelscan/last_scan.json
 .promptfoo/
+evals/deepeval/.deepeval/
+.pytest_cache/
+
+# Corridas de reports/ (generadas por scripts/run_all_evals.sh) - solo se
+# versiona reports/README.md
+reports/*/
 
 # Índice RAG persistido localmente (fuera de Docker)
 app/rag/.index/

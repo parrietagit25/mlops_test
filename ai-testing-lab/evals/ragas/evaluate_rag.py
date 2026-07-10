@@ -26,6 +26,7 @@ from datasets import Dataset
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from ragas import evaluate
 from ragas.metrics import answer_relevancy, context_precision, context_recall, faithfulness
+from ragas.run_config import RunConfig
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8080")
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -82,18 +83,42 @@ def main() -> None:
         api_key="not-needed",
         model=CHAT_MODEL,
         temperature=0.0,
+        # Sin este límite, un modelo pequeño puede entrar en un bucle de
+        # repetición en algún prompt interno de Ragas y generar miles de
+        # tokens sin parar (visto en la práctica: >5000 tokens en un solo
+        # job). Los prompts de juicio/verdicto de Ragas son cortos, 512
+        # tokens es más que suficiente margen.
+        max_tokens=512,
     )
     embeddings = OpenAIEmbeddings(
         base_url=f"{OLLAMA_BASE_URL.rstrip('/')}/v1",
         api_key="not-needed",
         model=EMBED_MODEL,
+        # Por defecto, OpenAIEmbeddings pre-tokeniza el texto con tiktoken y
+        # envía arrays de enteros (token ids) como `input` para manejar
+        # límites de contexto - algo que la API real de OpenAI soporta pero
+        # el endpoint /v1/embeddings de Ollama no (responde 400 "invalid
+        # input type"). Con check_embedding_ctx_length=False se envía el
+        # texto tal cual (string), que sí acepta Ollama.
+        check_embedding_ctx_length=False,
     )
+
+    # Ragas por defecto usa max_workers=16 y timeout=180s (RunConfig), pensado
+    # para APIs remotas que atienden muchas requests en paralelo. Ollama en
+    # local sirve con un solo slot de inferencia (OLLAMA_NUM_PARALLEL=1 por
+    # defecto en CPU): si Ragas dispara 16 jobs a la vez, la mayoría queda
+    # esperando en cola y termina en TimeoutError antes de que Ollama llegue
+    # a procesarlos (visto en la práctica: 11/12 jobs en timeout). Por eso
+    # serializamos (max_workers=1) y damos un timeout generoso (métricas como
+    # faithfulness hacen varias llamadas encadenadas al modelo).
+    run_config = RunConfig(timeout=600, max_workers=1)
 
     result = evaluate(
         dataset=dataset,
         metrics=[faithfulness, answer_relevancy, context_precision, context_recall],
         llm=llm,
         embeddings=embeddings,
+        run_config=run_config,
     )
 
     df = result.to_pandas()

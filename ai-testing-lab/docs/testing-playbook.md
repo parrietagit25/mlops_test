@@ -79,6 +79,15 @@ correctos?). Resultados en `evals/ragas/last_run_results.csv`.
 embeddings), no en el modelo generador — no gastes tiempo ajustando el
 prompt en ese caso.
 
+**Limitación observada con `llama3.2:1b`**: en la práctica, `faithfulness`
+consistentemente da `NaN` con este modelo (el paso de descomponer la
+respuesta en afirmaciones verificables, que Ragas le pide al propio LLM,
+es demasiado exigente para 1B parámetros — mismo patrón que
+`FaithfulnessMetric` de DeepEval). `context_precision`/`context_recall`/
+`answer_relevancy` sí producen valores reales y útiles. Si necesitas
+`faithfulness` confiable, prueba con un modelo más grande
+(`OLLAMA_CHAT_MODEL=qwen2.5:7b` o similar) solo para el rol de juez.
+
 ## 4. Seguridad / Red teaming
 
 **Cuándo usarlo:** antes de exponer un nuevo skill o cambiar el system
