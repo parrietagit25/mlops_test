@@ -1,4 +1,4 @@
-# Configuración Streamlit (UI-1A.1)
+# Configuración Streamlit (UI-1A.1 / UI-1D.1)
 # Oculta la navegación multipágina automática y reduce la barra de desarrollo
 # sin bloquear rerun ni mensajes de error.
 
@@ -7,6 +7,11 @@
 showSidebarNavigation = false
 # Oculta "Deploy"; mantiene menú mínimo usable en local.
 toolbarMode = "minimal"
+
+[server]
+# Límite global del file_uploader (megabytes enteros). Default Streamlit = 200.
+# AI Testing Lab valida además el límite real de 512000 bytes en UI y Gateway.
+maxUploadSize = 1
 
 [browser]
 gatherUsageStats = false

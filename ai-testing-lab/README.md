@@ -37,8 +37,8 @@ y flujo, está en `docs/diagram.md` ("AI Testing Lab Architecture").
   ModelScan (documentado, uso bajo demanda).
 - **Observabilidad**: Arize Phoenix (trazas OTLP de cada llamada al modelo).
 - **UI Streamlit local** (`ailab-ui`, puerto 8501): cliente HTTP del Gateway.
-  Páginas operativas: **Inicio**, **Chat** (UI-1B) y **Skills** (UI-1C).
-  El resto son placeholders (RAG…Arquitectura).
+  Páginas operativas: **Inicio**, **Chat** (UI-1B), **Skills** (UI-1C) y **RAG** (UI-1D).
+  El resto son placeholders (Evaluaciones…Arquitectura).
 - **Scripts de automatización** para levantar, probar y validar todo.
 
 ## Requisitos
@@ -107,9 +107,9 @@ docker compose up -d
 # Phoenix: http://127.0.0.1:6006
 ```
 
-**Limitaciones actuales:** Inicio, Chat (UI-1B) y Skills (UI-1C) están operativos.
-RAG, Evaluaciones, Reportes, Observabilidad y Arquitectura siguen como
-placeholders (UI-1D…UI-1G).
+**Limitaciones actuales:** Inicio, Chat (UI-1B), Skills (UI-1C) y RAG (UI-1D)
+están operativos. Evaluaciones, Reportes, Observabilidad y Arquitectura siguen
+como placeholders (UI-1E…UI-1G).
 
 ### Módulo Chat (UI-1B)
 
@@ -132,6 +132,18 @@ placeholders (UI-1D…UI-1G).
 - Limpiar historial de Skills **no** afecta Chat ni otras páginas.
 - `rag_qa` depende del índice RAG existente; la administración/ingesta queda para UI-1D.
 - Sin ejecución directa de skills en Streamlit, sin imports del backend, sin conexión a Ollama.
+
+### Módulo RAG (UI-1D)
+
+- Propósito: estado, ingesta controlada y consulta del índice RAG vía Gateway.
+- Arquitectura: Streamlit → `GET /rag/status` · `POST /rag/ingest` · `GET /rag/query` → servicio RAG → embeddings/Ollama.
+- Extensiones: solo `.txt` y `.md`. Límites de aplicación: 10 archivos/solicitud, **512000 bytes** c/u.
+- Streamlit (`server.maxUploadSize = 1`): límite global del widget ≈ 1 MB (evita el default de 200 MB). La UI valida 512000 bytes antes de enviar; FastAPI vuelve a validar en el Gateway.
+- Ingesta: multipart al Gateway (Streamlit no escribe en `rag/uploads/`). Botón separado para reindexar sample_docs.
+- Consulta: `GET /rag/query` es **retriever** (chunks + score); no genera respuesta LLM. QA generativo sigue en Skills → `rag_qa`.
+- Fuentes: se muestra el conteo real de chunks y una lista de **fuentes únicas** (orden de primera aparición).
+- Historial de consultas solo en `st.session_state` (máx. 20). Limpiar RAG no afecta Chat ni Skills.
+- Sin vector database, sin borrado de documentos desde la UI, sin persistencia.
 
 Limitaciones del Gateway: Promptfoo/garak no están en la imagen API; jobs de eval
 in-memory; `trace_id` puede ser `null`; la suite `security` no siempre

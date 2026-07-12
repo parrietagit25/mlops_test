@@ -27,7 +27,9 @@ def _cfg(**overrides) -> UIConfig:
         read_timeout_s=2.0,
         chat_read_timeout_s=30.0,
         skill_read_timeout_s=30.0,
+        rag_read_timeout_s=30.0,
         status_cache_ttl_s=30,
+        ui_timezone="UTC",
     )
     if not overrides:
         return base
@@ -62,13 +64,13 @@ def test_health_ok(monkeypatch):
     monkeypatch.setattr(
         httpx.Client,
         "request",
-        lambda self, method, url, json=None: _FakeResp(200, {"status": "ok"}),
+        lambda self, method, url, **kwargs: _FakeResp(200, {"status": "ok"}),
     )
     assert GatewayClient(_cfg()).health().data["status"] == "ok"
 
 
 def test_timeout(monkeypatch):
-    def boom(self, method, url, json=None):
+    def boom(self, method, url, **kwargs):
         raise httpx.ReadTimeout("slow")
 
     monkeypatch.setattr(httpx.Client, "request", boom)
@@ -77,7 +79,7 @@ def test_timeout(monkeypatch):
 
 
 def test_connection_rejected(monkeypatch):
-    def boom(self, method, url, json=None):
+    def boom(self, method, url, **kwargs):
         raise httpx.ConnectError("refused")
 
     monkeypatch.setattr(httpx.Client, "request", boom)
@@ -89,7 +91,7 @@ def test_invalid_json(monkeypatch):
     monkeypatch.setattr(
         httpx.Client,
         "request",
-        lambda self, method, url, json=None: _FakeResp(200, json_error=True),
+        lambda self, method, url, **kwargs: _FakeResp(200, json_error=True),
     )
     r = GatewayClient(_cfg()).get("/health")
     assert r.error_kind == "invalid_json"
@@ -99,7 +101,7 @@ def test_http_400_model_not_found(monkeypatch):
     monkeypatch.setattr(
         httpx.Client,
         "request",
-        lambda self, method, url, json=None: _FakeResp(
+        lambda self, method, url, **kwargs: _FakeResp(
             400,
             {"error": {"code": "MODEL_NOT_FOUND", "message": "missing", "details": None}},
         ),
@@ -115,7 +117,7 @@ def test_http_422(monkeypatch):
     monkeypatch.setattr(
         httpx.Client,
         "request",
-        lambda self, method, url, json=None: _FakeResp(
+        lambda self, method, url, **kwargs: _FakeResp(
             422,
             {"error": {"code": "VALIDATION_ERROR", "message": "invalid", "details": []}},
         ),
@@ -128,7 +130,7 @@ def test_http_500(monkeypatch):
     monkeypatch.setattr(
         httpx.Client,
         "request",
-        lambda self, method, url, json=None: _FakeResp(
+        lambda self, method, url, **kwargs: _FakeResp(
             500, {"error": {"code": "CHAT_FAILED", "message": "boom"}}
         ),
     )
@@ -140,7 +142,7 @@ def test_http_503(monkeypatch):
     monkeypatch.setattr(
         httpx.Client,
         "request",
-        lambda self, method, url, json=None: _FakeResp(
+        lambda self, method, url, **kwargs: _FakeResp(
             503,
             {"error": {"code": "OLLAMA_UNAVAILABLE", "message": "down", "details": None}},
         ),
@@ -152,8 +154,8 @@ def test_http_503(monkeypatch):
 def test_send_chat_ok_payload(monkeypatch):
     captured = {}
 
-    def fake(self, method, url, json=None):
-        captured.update(method=method, url=url, json=json)
+    def fake(self, method, url, **kwargs):
+        captured.update(method=method, url=url, json=kwargs.get("json"))
         return _FakeResp(
             200,
             {
@@ -186,7 +188,7 @@ def test_send_chat_ok_payload(monkeypatch):
 def test_send_chat_no_retry(monkeypatch):
     n = {"c": 0}
 
-    def fake(self, method, url, json=None):
+    def fake(self, method, url, **kwargs):
         n["c"] += 1
         return _FakeResp(500, {"error": {"code": "X", "message": "y"}})
 
@@ -199,7 +201,7 @@ def test_get_models_valid(monkeypatch):
     monkeypatch.setattr(
         httpx.Client,
         "request",
-        lambda self, method, url, json=None: _FakeResp(
+        lambda self, method, url, **kwargs: _FakeResp(
             200,
             {
                 "chat_models": [{"name": "llama3.2:1b", "default": True}],
@@ -406,7 +408,7 @@ def test_get_skills_ok(monkeypatch):
     monkeypatch.setattr(
         httpx.Client,
         "request",
-        lambda self, method, url, json=None: _FakeResp(200, payload),
+        lambda self, method, url, **kwargs: _FakeResp(200, payload),
     )
     r = GatewayClient(_cfg()).get_skills()
     assert r.ok
@@ -417,7 +419,7 @@ def test_get_skills_empty(monkeypatch):
     monkeypatch.setattr(
         httpx.Client,
         "request",
-        lambda self, method, url, json=None: _FakeResp(200, []),
+        lambda self, method, url, **kwargs: _FakeResp(200, []),
     )
     r = GatewayClient(_cfg()).get_skills()
     assert r.ok
@@ -428,7 +430,7 @@ def test_get_skills_invalid_shape(monkeypatch):
     monkeypatch.setattr(
         httpx.Client,
         "request",
-        lambda self, method, url, json=None: _FakeResp(200, {"not": "a list"}),
+        lambda self, method, url, **kwargs: _FakeResp(200, {"not": "a list"}),
     )
     r = GatewayClient(_cfg()).get_skills()
     assert r.ok
@@ -438,10 +440,12 @@ def test_get_skills_invalid_shape(monkeypatch):
 def test_run_skill_ok_payload(monkeypatch):
     captured = {}
 
-    def fake(self, method, url, json=None):
+    def fake(self, method, url, **kwargs):
         captured["method"] = method
         captured["url"] = url
-        captured["json"] = json
+        captured["json"] = kwargs.get("json")
+        captured["files"] = kwargs.get("files")
+        captured["params"] = kwargs.get("params")
         return _FakeResp(200, {"output": "ok", "metadata": {"skill": "summarizer"}})
 
     monkeypatch.setattr(httpx.Client, "request", fake)
@@ -460,7 +464,7 @@ def test_run_skill_ok_payload(monkeypatch):
 def test_run_skill_no_retry(monkeypatch):
     calls = {"n": 0}
 
-    def fake(self, method, url, json=None):
+    def fake(self, method, url, **kwargs):
         calls["n"] += 1
         return _FakeResp(500, {"error": {"code": "X", "message": "boom"}})
 
@@ -484,7 +488,7 @@ def test_run_skill_http_errors(monkeypatch, status, kind):
     monkeypatch.setattr(
         httpx.Client,
         "request",
-        lambda self, method, url, json=None: _FakeResp(
+        lambda self, method, url, **kwargs: _FakeResp(
             status, {"error": {"code": "E", "message": "fail"}}
         ),
     )
@@ -495,7 +499,7 @@ def test_run_skill_http_errors(monkeypatch, status, kind):
 
 
 def test_run_skill_connection_timeout(monkeypatch):
-    def boom(self, method, url, json=None):
+    def boom(self, method, url, **kwargs):
         raise httpx.ConnectError("refused")
 
     monkeypatch.setattr(httpx.Client, "request", boom)
@@ -504,7 +508,7 @@ def test_run_skill_connection_timeout(monkeypatch):
 
 
 def test_run_skill_timeout(monkeypatch):
-    def boom(self, method, url, json=None):
+    def boom(self, method, url, **kwargs):
         raise httpx.ReadTimeout("slow")
 
     monkeypatch.setattr(httpx.Client, "request", boom)
@@ -516,7 +520,7 @@ def test_run_skill_invalid_json(monkeypatch):
     monkeypatch.setattr(
         httpx.Client,
         "request",
-        lambda self, method, url, json=None: _FakeResp(200, json_error=True),
+        lambda self, method, url, **kwargs: _FakeResp(200, json_error=True),
     )
     r = GatewayClient(_cfg()).run_skill("summarizer", {"text": "x", "max_sentences": 1})
     assert r.error_kind == "invalid_json"
@@ -642,3 +646,249 @@ def test_no_shell_or_arbitrary_skill_in_payload_module():
     assert "shell=True" not in src
     with pytest.raises(SkillPayloadError):
         build_skill_payload("arbitrary", {"text": "x"})
+
+
+# ---------------------------------------------------------------------------
+# UI-1D RAG
+# ---------------------------------------------------------------------------
+
+from rag_payload import (  # noqa: E402
+    HISTORY_LIMIT as RAG_HISTORY_LIMIT,
+    RagPayloadError,
+    humanize_rag_error,
+    parse_query_response,
+    unique_sources,
+    validate_query,
+    validate_upload_batch,
+    validate_upload_filename,
+)
+
+
+def test_rag_status_ok(monkeypatch):
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, **kwargs: _FakeResp(
+            200,
+            {
+                "available": True,
+                "embedding_model": "nomic-embed-text",
+                "documents_indexed": 2,
+                "chunks_indexed": 4,
+                "allowed_directory": "rag/sample_docs",
+                "allowed_extensions": [".txt", ".md"],
+            },
+        ),
+    )
+    r = GatewayClient(_cfg()).get_rag_status()
+    assert r.ok
+    assert r.data["documents_indexed"] == 2
+
+
+def test_query_rag_ok(monkeypatch):
+    captured = {}
+
+    def fake(self, method, url, **kwargs):
+        captured.update(method=method, url=url, params=kwargs.get("params"))
+        return _FakeResp(
+            200,
+            {
+                "query": "hola",
+                "results": [
+                    {"source": "a.txt", "text": "uno", "score": 0.9},
+                    {"source": "b.txt", "text": "dos", "score": 0.8},
+                ],
+            },
+        )
+
+    monkeypatch.setattr(httpx.Client, "request", fake)
+    r = GatewayClient(_cfg()).query_rag(q="hola", top_k=2)
+    assert r.ok
+    assert captured["method"] == "GET"
+    assert captured["url"].endswith("/rag/query")
+    assert captured["params"] == {"q": "hola", "top_k": 2}
+
+
+def test_ingest_rag_multipart(monkeypatch):
+    captured = {}
+
+    def fake(self, method, url, **kwargs):
+        captured.update(method=method, url=url, files=kwargs.get("files"), json=kwargs.get("json"))
+        return _FakeResp(
+            200,
+            {
+                "documents_indexed": 1,
+                "chunks_indexed": 2,
+                "mode": "sample_docs+uploads",
+                "uploaded_files": ["doc.txt"],
+                "sources": ["doc.txt"],
+            },
+        )
+
+    monkeypatch.setattr(httpx.Client, "request", fake)
+    r = GatewayClient(_cfg()).ingest_rag_files(
+        [("doc.txt", b"hola", "text/plain")]
+    )
+    assert r.ok
+    assert captured["method"] == "POST"
+    assert captured["url"].endswith("/rag/ingest")
+    assert captured["json"] is None
+    assert captured["files"] is not None
+
+
+def test_ingest_sample_docs_no_files(monkeypatch):
+    captured = {}
+
+    def fake(self, method, url, **kwargs):
+        captured.update(files=kwargs.get("files"), json=kwargs.get("json"))
+        return _FakeResp(
+            200,
+            {
+                "documents_indexed": 2,
+                "chunks_indexed": 4,
+                "mode": "sample_docs",
+                "uploaded_files": [],
+                "sources": ["a.txt"],
+            },
+        )
+
+    monkeypatch.setattr(httpx.Client, "request", fake)
+    r = GatewayClient(_cfg()).ingest_rag_files(None)
+    assert r.ok
+    assert captured["files"] is None
+
+
+@pytest.mark.parametrize("status", [400, 404, 413, 422, 500, 503])
+def test_rag_http_errors(monkeypatch, status):
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, **kwargs: _FakeResp(
+            status, {"error": {"code": "E", "message": "fail"}}
+        ),
+    )
+    r = GatewayClient(_cfg()).query_rag(q="x", top_k=1)
+    assert not r.ok
+    assert r.status_code == status
+
+
+def test_rag_connection_and_timeout(monkeypatch):
+    def boom(self, method, url, **kwargs):
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(httpx.Client, "request", boom)
+    assert GatewayClient(_cfg()).get_rag_status().error_kind == "connection"
+
+    def slow(self, method, url, **kwargs):
+        raise httpx.ReadTimeout("slow")
+
+    monkeypatch.setattr(httpx.Client, "request", slow)
+    assert GatewayClient(_cfg()).query_rag(q="x", top_k=1).error_kind == "timeout"
+
+
+def test_rag_invalid_json_empty(monkeypatch):
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, **kwargs: _FakeResp(200, json_error=True),
+    )
+    assert GatewayClient(_cfg()).query_rag(q="x", top_k=1).error_kind == "invalid_json"
+    q, results, err = parse_query_response(None)
+    assert err
+    assert results == []
+
+
+def test_unique_sources_preserves_order_and_count():
+    results = [
+        {"source": "testing_policy.txt", "text": "a"},
+        {"source": "lab_overview.txt", "text": "b"},
+        {"source": "testing_policy.txt", "text": "c"},
+        {"source": "lab_overview.txt", "text": "d"},
+    ]
+    assert unique_sources(results) == ["testing_policy.txt", "lab_overview.txt"]
+    assert len(results) == 4
+    assert unique_sources([]) == []
+    assert unique_sources(None) == []
+
+
+def test_upload_validation():
+    from rag_payload import MAX_UPLOAD_BYTES, upload_selection_error
+
+    assert validate_upload_filename("nota.txt") == "nota.txt"
+    assert validate_upload_filename("doc.MD") == "doc.MD"
+    with pytest.raises(RagPayloadError):
+        validate_upload_filename("evil.py")
+    with pytest.raises(RagPayloadError):
+        validate_upload_filename("x.exe")
+    with pytest.raises(RagPayloadError):
+        validate_upload_filename("a.zip")
+    with pytest.raises(RagPayloadError):
+        validate_upload_filename("x.sh")
+    with pytest.raises(RagPayloadError):
+        validate_upload_filename("x.ps1")
+    with pytest.raises(RagPayloadError):
+        validate_upload_filename("../secrets.txt")
+    with pytest.raises(RagPayloadError):
+        validate_upload_filename("C:\\abs\\file.txt")
+    with pytest.raises(RagPayloadError):
+        validate_upload_batch([("a.txt", 0)])
+    # Límite exacto inclusive / exclusivo.
+    assert validate_upload_batch([("ok.txt", MAX_UPLOAD_BYTES)]) == ["ok.txt"]
+    with pytest.raises(RagPayloadError):
+        validate_upload_batch([("big.txt", MAX_UPLOAD_BYTES + 1)])
+    assert upload_selection_error([("big.txt", MAX_UPLOAD_BYTES + 1)])
+    assert upload_selection_error([("ok.txt", MAX_UPLOAD_BYTES)]) is None
+    # 10 ok, 11 no.
+    assert len(validate_upload_batch([(f"{i}.txt", 10) for i in range(10)])) == 10
+    with pytest.raises(RagPayloadError):
+        validate_upload_batch([(f"{i}.txt", 10) for i in range(11)])
+    assert validate_upload_batch([("ok.txt", 12)]) == ["ok.txt"]
+    assert validate_upload_batch([("ok.md", 12)]) == ["ok.md"]
+
+
+def test_streamlit_upload_config_documents_1mb_global():
+    from pathlib import Path
+
+    cfg = Path(__file__).resolve().parents[1] / ".streamlit" / "config.toml"
+    text = cfg.read_text(encoding="utf-8")
+    assert "maxUploadSize = 1" in text
+    assert "[server]" in text
+
+
+def test_query_validation():
+    assert validate_query(question="  hola  ", top_k=3) == ("hola", 3)
+    with pytest.raises(RagPayloadError):
+        validate_query(question="  ", top_k=3)
+    with pytest.raises(RagPayloadError):
+        validate_query(question="hola", top_k=0)
+    with pytest.raises(RagPayloadError):
+        validate_query(question="hola", top_k=99)
+
+
+def test_parse_query_and_humanize():
+    q, results, err = parse_query_response(
+        {"query": "q", "results": [{"source": "a.txt", "text": "t", "score": 0.5}]}
+    )
+    assert q == "q" and err is None and results[0]["score"] == 0.5
+    assert "Gateway" in humanize_rag_error(
+        error_kind="connection", error_code=None, error_message=None, status_code=None
+    )
+
+
+def test_rag_history_clear_keeps_chat_skills():
+    rag_hist = [{"q": i} for i in range(25)]
+    trimmed = rag_hist[:RAG_HISTORY_LIMIT]
+    assert len(trimmed) == 20
+    chat = [{"role": "user", "content": "keep"}]
+    skills = [{"skill": "summarizer"}]
+    rag_hist = []
+    assert chat and skills and rag_hist == []
+
+
+def test_no_shell_in_rag_payload():
+    import rag_payload as rp
+
+    src = open(rp.__file__, encoding="utf-8").read()
+    assert "subprocess" not in src
+    assert "os.system" not in src
+    assert "shell=True" not in src

@@ -1,12 +1,15 @@
-"""Gestión centralizada de st.session_state (UI-1A / UI-1B / UI-1C)."""
+"""Gestión centralizada de st.session_state (UI-1A … UI-1D)."""
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import streamlit as st
 
+from rag_payload import HISTORY_LIMIT as RAG_HISTORY_LIMIT
+from rag_payload import QUERY_TOP_K_DEFAULT
 from skills_payload import (
     RAG_TOP_K_DEFAULT,
     SKILLS_HISTORY_LIMIT,
@@ -33,6 +36,18 @@ DEFAULT_TEMPERATURE = 0.2
 DEFAULT_MAX_TOKENS = 512
 CHAT_MODELS_TTL_S = 30
 SKILLS_LIST_TTL_S = 30
+RAG_STATUS_TTL_S = 30
+
+
+def format_ui_timestamp(tz_name: str = "UTC") -> str:
+    """Timestamp local de UI con zona configurada (fallback UTC)."""
+    try:
+        tz = ZoneInfo(tz_name) if tz_name else ZoneInfo("UTC")
+        label = tz_name or "UTC"
+    except ZoneInfoNotFoundError:
+        tz = timezone.utc
+        label = "UTC"
+    return datetime.now(tz=tz).isoformat(timespec="seconds") + f" ({label})"
 
 
 def init_session_state() -> None:
@@ -42,7 +57,7 @@ def init_session_state() -> None:
         "lab_status": None,
         "global_error": None,
         "status_fetch_meta": None,
-        # UI-1B Chat — historial solo en sesión Streamlit (sin persistencia).
+        # UI-1B Chat
         "chat_messages": [],
         "chat_system_prompt": DEFAULT_SYSTEM_PROMPT,
         "chat_model": None,
@@ -53,7 +68,7 @@ def init_session_state() -> None:
         "chat_models_payload": None,
         "chat_models_fetched_at": 0.0,
         "chat_models_warning": None,
-        # UI-1C Skills — historial solo en sesión.
+        # UI-1C Skills
         "skills_list": None,
         "skills_list_fetched_at": 0.0,
         "skills_selected": None,
@@ -65,6 +80,17 @@ def init_session_state() -> None:
         "skills_summarizer_max_sentences": SUMMARIZER_MAX_SENTENCES_DEFAULT,
         "skills_rag_question": "",
         "skills_rag_top_k": RAG_TOP_K_DEFAULT,
+        # UI-1D RAG
+        "rag_status_payload": None,
+        "rag_status_fetched_at": 0.0,
+        "rag_ingest_in_progress": False,
+        "rag_query_in_progress": False,
+        "rag_last_error": None,
+        "rag_last_ingest_result": None,
+        "rag_last_query_result": None,
+        "rag_query_history": [],
+        "rag_question": "",
+        "rag_top_k": QUERY_TOP_K_DEFAULT,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -72,7 +98,6 @@ def init_session_state() -> None:
 
 
 def set_page(page: str) -> None:
-    """Actualiza la página activa (también gestiona el radio con key='page')."""
     if page in PAGE_KEYS:
         st.session_state.page = page
 
@@ -92,7 +117,6 @@ def set_global_error(message: str | None) -> None:
 
 
 def clear_chat() -> None:
-    """Elimina solo el historial y el error; conserva modelo/params/system prompt."""
     st.session_state.chat_messages = []
     st.session_state.chat_last_error = None
     st.session_state.chat_request_in_progress = False
@@ -123,7 +147,6 @@ def invalidate_skills_cache() -> None:
 
 
 def clear_skills_history() -> None:
-    """Elimina solo el historial/resultado/error de Skills; no toca Chat."""
     st.session_state.skills_history = []
     st.session_state.skills_last_error = None
     st.session_state.skills_last_result = None
@@ -148,7 +171,7 @@ def build_skills_history_entry(
 ) -> dict[str, Any]:
     return {
         "skill": skill,
-        "executed_at": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "executed_at": format_ui_timestamp(),
         "input_summary": summarize_input(skill, payload),
         "output": truncate_output(output or "") if output else None,
         "metadata": metadata or {},
@@ -156,3 +179,24 @@ def build_skills_history_entry(
         "error": error,
         "duration_ms": duration_ms,
     }
+
+
+def invalidate_rag_status_cache() -> None:
+    st.session_state.rag_status_payload = None
+    st.session_state.rag_status_fetched_at = 0.0
+
+
+def clear_rag_history() -> None:
+    """Solo historial/resultados RAG; no toca Chat ni Skills."""
+    st.session_state.rag_query_history = []
+    st.session_state.rag_last_error = None
+    st.session_state.rag_last_query_result = None
+    st.session_state.rag_last_ingest_result = None
+    st.session_state.rag_ingest_in_progress = False
+    st.session_state.rag_query_in_progress = False
+
+
+def append_rag_history_entry(entry: dict[str, Any]) -> None:
+    history = list(st.session_state.rag_query_history or [])
+    history.insert(0, entry)
+    st.session_state.rag_query_history = history[:RAG_HISTORY_LIMIT]

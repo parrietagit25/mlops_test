@@ -67,6 +67,8 @@ class GatewayClient:
         path: str,
         *,
         json_body: dict | None = None,
+        params: dict | None = None,
+        files: Any = None,
         retry_once: bool = False,
         timeout: httpx.Timeout | None = None,
     ) -> ApiResult:
@@ -78,7 +80,12 @@ class GatewayClient:
         for attempt in range(attempts):
             try:
                 with httpx.Client(timeout=req_timeout) as client:
-                    resp = client.request(method, url, json=json_body)
+                    kwargs: dict[str, Any] = {"params": params}
+                    if files is not None:
+                        kwargs["files"] = files
+                    elif json_body is not None:
+                        kwargs["json"] = json_body
+                    resp = client.request(method, url, **kwargs)
             except httpx.ConnectError as exc:
                 last = ApiResult(
                     ok=False,
@@ -158,18 +165,33 @@ class GatewayClient:
             error_message="Error desconocido al contactar el Gateway.",
         )
 
-    def get(self, path: str, *, retry_once: bool = False) -> ApiResult:
-        return self._request("GET", path, retry_once=retry_once)
+    def get(
+        self,
+        path: str,
+        *,
+        params: dict | None = None,
+        retry_once: bool = False,
+        timeout: httpx.Timeout | None = None,
+    ) -> ApiResult:
+        return self._request(
+            "GET", path, params=params, retry_once=retry_once, timeout=timeout
+        )
 
     def post(
         self,
         path: str,
         json_body: dict | None = None,
         *,
+        files: Any = None,
         timeout: httpx.Timeout | None = None,
     ) -> ApiResult:
         return self._request(
-            "POST", path, json_body=json_body, retry_once=False, timeout=timeout
+            "POST",
+            path,
+            json_body=json_body,
+            files=files,
+            retry_once=False,
+            timeout=timeout,
         )
 
     def health(self) -> ApiResult:
@@ -241,4 +263,47 @@ class GatewayClient:
             f"/agents/{name}/run",
             json_body=body,
             timeout=skill_timeout,
+        )
+
+    def get_rag_status(self) -> ApiResult:
+        """Alias explícito de GET /rag/status."""
+        return self.rag_status()
+
+    def ingest_rag_files(
+        self,
+        files: list[tuple[str, bytes, str]] | None = None,
+    ) -> ApiResult:
+        """POST /rag/ingest — multipart `files` o sin archivos (sample_docs).
+
+        files: lista de (filename, content_bytes, content_type).
+        """
+        rag_timeout = httpx.Timeout(
+            connect=self.cfg.connect_timeout_s,
+            read=self.cfg.rag_read_timeout_s,
+            write=self.cfg.rag_read_timeout_s,
+            pool=self.cfg.connect_timeout_s,
+        )
+        if not files:
+            # Legacy: reindex sample_docs sin multipart.
+            return self.post("/rag/ingest", json_body=None, timeout=rag_timeout)
+
+        multipart = [
+            ("files", (name, content, ctype or "text/plain"))
+            for name, content, ctype in files
+        ]
+        return self.post("/rag/ingest", files=multipart, timeout=rag_timeout)
+
+    def query_rag(self, *, q: str, top_k: int = 3) -> ApiResult:
+        """GET /rag/query — retriever (chunks), no genera respuesta LLM."""
+        rag_timeout = httpx.Timeout(
+            connect=self.cfg.connect_timeout_s,
+            read=self.cfg.rag_read_timeout_s,
+            write=self.cfg.rag_read_timeout_s,
+            pool=self.cfg.connect_timeout_s,
+        )
+        return self.get(
+            "/rag/query",
+            params={"q": q, "top_k": top_k},
+            retry_once=False,
+            timeout=rag_timeout,
         )

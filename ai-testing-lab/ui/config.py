@@ -25,7 +25,11 @@ class UIConfig:
     chat_read_timeout_s: float
     # Timeout de lectura para POST /agents/{skill}/run.
     skill_read_timeout_s: float
+    # Timeout para ingest/query RAG (embeddings pueden ser lentos).
+    rag_read_timeout_s: float
     status_cache_ttl_s: int
+    # Zona horaria opcional para timestamps de UI (ej. America/Panama).
+    ui_timezone: str
 
 
 def load_config() -> UIConfig:
@@ -42,5 +46,7 @@ def load_config() -> UIConfig:
         read_timeout_s=float(os.getenv("AILAB_HTTP_READ_TIMEOUT", "15")),
         chat_read_timeout_s=float(os.getenv("AILAB_CHAT_READ_TIMEOUT", "120")),
         skill_read_timeout_s=float(os.getenv("AILAB_SKILL_READ_TIMEOUT", "120")),
+        rag_read_timeout_s=float(os.getenv("AILAB_RAG_READ_TIMEOUT", "180")),
         status_cache_ttl_s=int(os.getenv("AILAB_STATUS_CACHE_TTL", "30")),
+        ui_timezone=os.getenv("AILAB_UI_TIMEZONE", "UTC").strip() or "UTC",
     )
