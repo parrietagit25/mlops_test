@@ -23,6 +23,8 @@ class UIConfig:
     read_timeout_s: float
     # Timeout de lectura específico para POST /chat (inferencia local puede ser lenta).
     chat_read_timeout_s: float
+    # Timeout de lectura para POST /agents/{skill}/run.
+    skill_read_timeout_s: float
     status_cache_ttl_s: int
 
 
@@ -39,5 +41,6 @@ def load_config() -> UIConfig:
         connect_timeout_s=float(os.getenv("AILAB_HTTP_CONNECT_TIMEOUT", "3")),
         read_timeout_s=float(os.getenv("AILAB_HTTP_READ_TIMEOUT", "15")),
         chat_read_timeout_s=float(os.getenv("AILAB_CHAT_READ_TIMEOUT", "120")),
+        skill_read_timeout_s=float(os.getenv("AILAB_SKILL_READ_TIMEOUT", "120")),
         status_cache_ttl_s=int(os.getenv("AILAB_STATUS_CACHE_TTL", "30")),
     )

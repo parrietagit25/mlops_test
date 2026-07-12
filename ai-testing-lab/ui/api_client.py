@@ -214,3 +214,31 @@ class GatewayClient:
             pool=self.cfg.connect_timeout_s,
         )
         return self.post("/chat", json_body=body, timeout=chat_timeout)
+
+    def get_skills(self) -> ApiResult:
+        """GET /skills — lista [{name, description}, ...]."""
+        return self.get("/skills", retry_once=True)
+
+    def run_skill(self, skill_name: str, payload: dict[str, Any]) -> ApiResult:
+        """POST /agents/{skill_name}/run — sin reintento automático."""
+        name = (skill_name or "").strip()
+        if not name:
+            return ApiResult(
+                ok=False,
+                status_code=None,
+                error_kind="client_error",
+                error_message="Nombre de skill vacío.",
+            )
+        # Solo path relativo fijo + nombre ya autorizado por la UI.
+        body = {"payload": payload}
+        skill_timeout = httpx.Timeout(
+            connect=self.cfg.connect_timeout_s,
+            read=self.cfg.skill_read_timeout_s,
+            write=self.cfg.skill_read_timeout_s,
+            pool=self.cfg.connect_timeout_s,
+        )
+        return self.post(
+            f"/agents/{name}/run",
+            json_body=body,
+            timeout=skill_timeout,
+        )

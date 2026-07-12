@@ -37,8 +37,8 @@ y flujo, está en `docs/diagram.md` ("AI Testing Lab Architecture").
   ModelScan (documentado, uso bajo demanda).
 - **Observabilidad**: Arize Phoenix (trazas OTLP de cada llamada al modelo).
 - **UI Streamlit local** (`ailab-ui`, puerto 8501): cliente HTTP del Gateway.
-  Páginas operativas: **Inicio** (estado) y **Chat** (UI-1B vía `POST /chat`).
-  El resto son placeholders (Skills…Arquitectura).
+  Páginas operativas: **Inicio**, **Chat** (UI-1B) y **Skills** (UI-1C).
+  El resto son placeholders (RAG…Arquitectura).
 - **Scripts de automatización** para levantar, probar y validar todo.
 
 ## Requisitos
@@ -107,9 +107,9 @@ docker compose up -d
 # Phoenix: http://127.0.0.1:6006
 ```
 
-**Limitaciones actuales:** Chat (UI-1B) e Inicio están operativos. Skills, RAG,
-Evaluaciones, Reportes, Observabilidad y Arquitectura siguen como placeholders
-(UI-1C…UI-1G).
+**Limitaciones actuales:** Inicio, Chat (UI-1B) y Skills (UI-1C) están operativos.
+RAG, Evaluaciones, Reportes, Observabilidad y Arquitectura siguen como
+placeholders (UI-1D…UI-1G).
 
 ### Módulo Chat (UI-1B)
 
@@ -121,6 +121,17 @@ Evaluaciones, Reportes, Observabilidad y Arquitectura siguen como placeholders
 - Metadata de respuesta: modelo, duración y `trace_id` (o «no disponible»).
 - Errores: mensajes sanitizados (Gateway caído, Ollama 503, modelo inexistente, límites, JSON inválido).
 - Sin streaming, sin autenticación, sin conexión directa a Ollama/Phoenix, sin truncado silencioso del historial.
+
+### Módulo Skills (UI-1C)
+
+- Propósito: ejecutar skills del Agent Runtime vía Gateway.
+- Arquitectura: Streamlit → `GET /skills` / `POST /agents/{skill}/run` → Agent Runtime → skill → LLM o RAG.
+- Skills soportadas en UI: `summarizer` (`text`, `max_sentences`) y `rag_qa` (`question`, `top_k`).
+- Formularios tipados (sin editor JSON libre ni payloads arbitrarios).
+- Historial de ejecuciones solo en `st.session_state` (máx. 20; se pierde al cerrar sesión/contenedor).
+- Limpiar historial de Skills **no** afecta Chat ni otras páginas.
+- `rag_qa` depende del índice RAG existente; la administración/ingesta queda para UI-1D.
+- Sin ejecución directa de skills en Streamlit, sin imports del backend, sin conexión a Ollama.
 
 Limitaciones del Gateway: Promptfoo/garak no están en la imagen API; jobs de eval
 in-memory; `trace_id` puede ser `null`; la suite `security` no siempre

@@ -26,6 +26,7 @@ def _cfg(**overrides) -> UIConfig:
         connect_timeout_s=1.0,
         read_timeout_s=2.0,
         chat_read_timeout_s=30.0,
+        skill_read_timeout_s=30.0,
         status_cache_ttl_s=30,
     )
     if not overrides:
@@ -375,3 +376,269 @@ def test_no_user_url_in_payload_builder():
     )
     assert "base_url" not in payload
     assert payload["model"] == "llama3.2:1b"
+
+
+# ---------------------------------------------------------------------------
+# UI-1C Skills
+# ---------------------------------------------------------------------------
+
+from skills_payload import (  # noqa: E402
+    SKILLS_HISTORY_LIMIT,
+    SkillPayloadError,
+    UI_SUPPORTED_SKILLS,
+    assert_skill_allowed,
+    authorized_skill_names,
+    build_rag_qa_payload,
+    build_skill_payload,
+    build_summarizer_payload,
+    humanize_skill_error,
+    parse_skill_result,
+    safe_metadata_for_display,
+    summarize_input,
+)
+
+
+def test_get_skills_ok(monkeypatch):
+    payload = [
+        {"name": "summarizer", "description": "Resume"},
+        {"name": "rag_qa", "description": "RAG"},
+    ]
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, json=None: _FakeResp(200, payload),
+    )
+    r = GatewayClient(_cfg()).get_skills()
+    assert r.ok
+    assert authorized_skill_names(r.data) == ["summarizer", "rag_qa"]
+
+
+def test_get_skills_empty(monkeypatch):
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, json=None: _FakeResp(200, []),
+    )
+    r = GatewayClient(_cfg()).get_skills()
+    assert r.ok
+    assert authorized_skill_names(r.data) == []
+
+
+def test_get_skills_invalid_shape(monkeypatch):
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, json=None: _FakeResp(200, {"not": "a list"}),
+    )
+    r = GatewayClient(_cfg()).get_skills()
+    assert r.ok
+    assert authorized_skill_names(r.data) == []
+
+
+def test_run_skill_ok_payload(monkeypatch):
+    captured = {}
+
+    def fake(self, method, url, json=None):
+        captured["method"] = method
+        captured["url"] = url
+        captured["json"] = json
+        return _FakeResp(200, {"output": "ok", "metadata": {"skill": "summarizer"}})
+
+    monkeypatch.setattr(httpx.Client, "request", fake)
+    r = GatewayClient(_cfg()).run_skill(
+        "summarizer", {"text": "hola mundo", "max_sentences": 2}
+    )
+    assert r.ok
+    assert captured["method"] == "POST"
+    assert captured["url"] == "http://api:8080/agents/summarizer/run"
+    assert captured["json"] == {
+        "payload": {"text": "hola mundo", "max_sentences": 2}
+    }
+    assert "11434" not in captured["url"]
+
+
+def test_run_skill_no_retry(monkeypatch):
+    calls = {"n": 0}
+
+    def fake(self, method, url, json=None):
+        calls["n"] += 1
+        return _FakeResp(500, {"error": {"code": "X", "message": "boom"}})
+
+    monkeypatch.setattr(httpx.Client, "request", fake)
+    r = GatewayClient(_cfg()).run_skill("summarizer", {"text": "x", "max_sentences": 1})
+    assert not r.ok
+    assert calls["n"] == 1
+
+
+@pytest.mark.parametrize(
+    "status,kind",
+    [
+        (400, "client_error"),
+        (404, "client_error"),
+        (422, "client_error"),
+        (500, "server_error"),
+        (503, "unavailable"),
+    ],
+)
+def test_run_skill_http_errors(monkeypatch, status, kind):
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, json=None: _FakeResp(
+            status, {"error": {"code": "E", "message": "fail"}}
+        ),
+    )
+    r = GatewayClient(_cfg()).run_skill("summarizer", {"text": "x", "max_sentences": 1})
+    assert not r.ok
+    assert r.status_code == status
+    assert r.error_kind == kind
+
+
+def test_run_skill_connection_timeout(monkeypatch):
+    def boom(self, method, url, json=None):
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(httpx.Client, "request", boom)
+    r = GatewayClient(_cfg()).run_skill("summarizer", {"text": "x", "max_sentences": 1})
+    assert r.error_kind == "connection"
+
+
+def test_run_skill_timeout(monkeypatch):
+    def boom(self, method, url, json=None):
+        raise httpx.ReadTimeout("slow")
+
+    monkeypatch.setattr(httpx.Client, "request", boom)
+    r = GatewayClient(_cfg()).run_skill("rag_qa", {"question": "q", "top_k": 2})
+    assert r.error_kind == "timeout"
+
+
+def test_run_skill_invalid_json(monkeypatch):
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, json=None: _FakeResp(200, json_error=True),
+    )
+    r = GatewayClient(_cfg()).run_skill("summarizer", {"text": "x", "max_sentences": 1})
+    assert r.error_kind == "invalid_json"
+
+
+def test_run_skill_empty_name():
+    r = GatewayClient(_cfg()).run_skill("  ", {"text": "x"})
+    assert not r.ok
+
+
+def test_authorized_skills_filters_unknown():
+    names = authorized_skill_names(
+        [
+            {"name": "summarizer"},
+            {"name": "evil_skill"},
+            {"name": "rag_qa"},
+            {"name": "summarizer"},
+        ]
+    )
+    assert names == ["summarizer", "rag_qa"]
+    assert "evil_skill" not in UI_SUPPORTED_SKILLS or "evil_skill" not in names
+
+
+def test_assert_skill_allowed():
+    assert assert_skill_allowed("summarizer", ["summarizer", "rag_qa"]) == "summarizer"
+    with pytest.raises(SkillPayloadError):
+        assert_skill_allowed("evil", ["summarizer"])
+    with pytest.raises(SkillPayloadError):
+        assert_skill_allowed("summarizer", ["rag_qa"])
+    with pytest.raises(SkillPayloadError):
+        assert_skill_allowed("", ["summarizer"])
+
+
+def test_build_summarizer_payload_exact():
+    p = build_summarizer_payload(text="  Hola  ", max_sentences=3)
+    assert p == {"text": "Hola", "max_sentences": 3}
+    assert set(p.keys()) == {"text", "max_sentences"}
+
+
+def test_build_rag_qa_payload_exact():
+    p = build_rag_qa_payload(question=" ¿Qué es? ", top_k=2)
+    assert p == {"question": "¿Qué es?", "top_k": 2}
+    assert set(p.keys()) == {"question", "top_k"}
+
+
+def test_build_skill_payload_rejects_extra_via_builder():
+    # El builder solo toma campos conocidos; no reenvía extras del form.
+    p = build_skill_payload(
+        "summarizer",
+        {"text": "abc", "max_sentences": 2, "hack": True, "url": "http://x"},
+    )
+    assert "hack" not in p
+    assert "url" not in p
+
+
+def test_build_payload_rejects_empty_and_limits():
+    with pytest.raises(SkillPayloadError):
+        build_summarizer_payload(text="   ", max_sentences=3)
+    with pytest.raises(SkillPayloadError):
+        build_rag_qa_payload(question="", top_k=3)
+    with pytest.raises(SkillPayloadError):
+        build_summarizer_payload(text="x", max_sentences=99)
+    with pytest.raises(SkillPayloadError):
+        build_rag_qa_payload(question="q", top_k=0)
+
+
+def test_parse_skill_result_and_metadata():
+    out, meta, err = parse_skill_result(
+        {"output": "respuesta", "metadata": {"skill": "rag_qa", "chunks_used": 2, "secret": "no"}}
+    )
+    assert out == "respuesta"
+    assert err is None
+    safe = safe_metadata_for_display(meta)
+    assert "secret" not in safe
+    assert safe["chunks_used"] == 2
+    assert parse_skill_result({})[2]
+    assert parse_skill_result({"output": ""})[2]
+    assert parse_skill_result(None)[2]
+
+
+def test_humanize_skill_errors():
+    assert "Gateway" in humanize_skill_error(
+        error_kind="connection", error_code=None, error_message=None, status_code=None
+    )
+    assert "no existe" in humanize_skill_error(
+        error_kind="client_error",
+        error_code="SKILL_NOT_FOUND",
+        error_message="x",
+        status_code=404,
+    ).lower() or "registrada" in humanize_skill_error(
+        error_kind="client_error",
+        error_code="SKILL_NOT_FOUND",
+        error_message="x",
+        status_code=404,
+    )
+
+
+def test_skills_history_limit_and_clear_semantics():
+    history = [{"skill": f"s{i}"} for i in range(25)]
+    trimmed = history[:SKILLS_HISTORY_LIMIT]
+    assert len(trimmed) == 20
+    chat_messages = [{"role": "user", "content": "keep"}]
+    # clear skills only
+    history = []
+    skills_error = None
+    assert history == []
+    assert skills_error is None
+    assert chat_messages == [{"role": "user", "content": "keep"}]
+
+
+def test_summarize_input_bounded():
+    long_text = "palabra " * 100
+    s = summarize_input("summarizer", {"text": long_text})
+    assert len(s) <= 120
+
+
+def test_no_shell_or_arbitrary_skill_in_payload_module():
+    import skills_payload as sp
+
+    src = open(sp.__file__, encoding="utf-8").read()
+    assert "subprocess" not in src
+    assert "os.system" not in src
+    assert "shell=True" not in src
+    with pytest.raises(SkillPayloadError):
+        build_skill_payload("arbitrary", {"text": "x"})

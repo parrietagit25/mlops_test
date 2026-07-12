@@ -8,6 +8,7 @@ La UI nunca importa módulos de `app/` ni ejecuta scripts.
 UI-1A.1: las vistas viven en `views/` (no en `pages/`) para evitar la
 navegación multipágina automática de Streamlit.
 UI-1B: Chat funcional vía POST /chat (sin acceso directo a Ollama).
+UI-1C: Skills vía GET /skills y POST /agents/{skill}/run.
 """
 
 from __future__ import annotations
@@ -69,7 +70,7 @@ page = render_sidebar()
 ROUTES = {
     "Inicio": lambda: home.render_home(client, cfg),
     "Chat": lambda: chat.render(client, cfg),
-    "Skills": skills.render,
+    "Skills": lambda: skills.render(client, cfg),
     "RAG": rag.render,
     "Evaluaciones": evaluations.render,
     "Reportes": reports.render,
