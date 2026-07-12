@@ -36,6 +36,8 @@ y flujo, está en `docs/diagram.md` ("AI Testing Lab Architecture").
 - **Seguridad / red teaming**: promptfoo redteam + garak (documentado) +
   ModelScan (documentado, uso bajo demanda).
 - **Observabilidad**: Arize Phoenix (trazas OTLP de cada llamada al modelo).
+- **UI Streamlit local** (`ailab-ui`, puerto 8501): cliente HTTP del Gateway
+  (UI-1A). Solo la página de estado está operativa; el resto son placeholders.
 - **Scripts de automatización** para levantar, probar y validar todo.
 
 ## Requisitos
@@ -53,8 +55,13 @@ git clone <este-repo> ai-testing-lab   # o usa la carpeta ya generada
 cd ai-testing-lab
 
 ./scripts/bootstrap.sh   # crea .env desde .env.example, valida dependencias
-./scripts/up.sh          # levanta ollama + api + phoenix, descarga modelos
+./scripts/up.sh          # levanta ollama + api + phoenix + ui, descarga modelos
 ./scripts/health_check.sh
+
+# UI Streamlit (cliente del Gateway)
+# http://127.0.0.1:8501
+# OpenAPI: http://127.0.0.1:8080/docs
+# Phoenix: http://127.0.0.1:6006
 
 # Indexa los documentos de ejemplo para RAG
 curl -X POST http://localhost:8080/rag/ingest
@@ -70,6 +77,41 @@ curl -X POST http://localhost:8080/agents/rag_qa/run \
 ```
 
 Abre http://localhost:6006 para ver las trazas en Arize Phoenix.
+Abre http://127.0.0.1:8501 para la interfaz Streamlit (estado del laboratorio).
+
+## Interfaz Streamlit (UI-1A)
+
+La UI **no accede directamente a Ollama, RAG, evaluaciones ni reportes**.
+Todas las operaciones pasan por el **FastAPI Gateway**.
+
+```text
+Navegador → Streamlit (ailab-ui:8501) → FastAPI (ailab-api:8080)
+                                         → Ollama / skills / RAG / evals / reports / Phoenix
+```
+
+| Variable | Uso |
+|---|---|
+| `AILAB_API_BASE_URL` | URL interna que usa Streamlit para HTTP (en Compose: `http://api:8080`) |
+| `AILAB_API_PUBLIC_URL` | Enlace para el navegador (`http://127.0.0.1:8080`) |
+| `AILAB_OPENAPI_DOCS_URL` | Enlace a `/docs` |
+| `AILAB_PHOENIX_PUBLIC_URL` | Enlace a Phoenix en el host |
+| `UI_PORT` | Puerto publicado en loopback (default `8501`) |
+
+```bash
+docker compose build ui
+docker compose up -d
+# UI:      http://127.0.0.1:8501
+# API:     http://127.0.0.1:8080
+# OpenAPI: http://127.0.0.1:8080/docs
+# Phoenix: http://127.0.0.1:6006
+```
+
+**Limitaciones actuales (UI-1A):** solo la página *Inicio* consulta el Gateway.
+Chat, Skills, RAG, Evaluaciones, Reportes, Observabilidad y Arquitectura son
+placeholders (UI-1B…UI-1G). Limitaciones del Gateway que afectan etapas
+posteriores: Promptfoo/garak no están en la imagen API; jobs de eval
+in-memory; `trace_id` puede ser `null`; la suite `security` no siempre
+persiste reportes.
 
 ## Correr las suites de evaluación
 
@@ -90,17 +132,22 @@ los resultados.
 
 ```
 ai-testing-lab/
-├── docker-compose.yml       # ollama + api + phoenix
+├── docker-compose.yml       # ollama + api + phoenix + ui
 ├── .env.example
 ├── LICENSE                  # MIT (código original de este repo)
 ├── ATTRIBUTIONS.md          # licencias de todas las dependencias de terceros
-├── app/                     # aplicación propia
+├── app/                     # aplicación propia (Gateway)
 │   ├── api/                 # gateway FastAPI (punto único de entrada)
 │   ├── agents/               # runtime de agentes + skills reutilizables
 │   ├── prompts/              # plantillas de prompt versionadas
 │   ├── rag/                  # ingesta + retriever + documentos de ejemplo
 │   ├── core/                  # config, cliente LLM, tracing
 │   └── config/                # configuración declarativa de referencia
+├── ui/                      # Streamlit (cliente HTTP del Gateway, UI-1A)
+│   ├── app.py
+│   ├── api_client.py
+│   ├── views/                 # vistas (NO pages/: evita nav automática de Streamlit)
+│   └── Dockerfile
 ├── evals/                   # todo lo relacionado a evaluación
 │   ├── promptfoo/             # testing de prompts
 │   ├── deepeval/              # testing de la app LLM

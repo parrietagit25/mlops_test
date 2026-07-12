@@ -1,0 +1,5 @@
+# Documentos subidos vía POST /rag/ingest (multipart). Solo .txt/.md.
+# No ejecutar. No versionar contenido de usuario.
+*
+!.gitignore
+!.gitkeep

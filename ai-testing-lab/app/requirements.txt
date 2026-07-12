@@ -2,6 +2,7 @@ fastapi==0.115.0
 uvicorn[standard]==0.30.6
 pydantic==2.9.2
 pydantic-settings==2.5.2
+python-multipart==0.0.12
 openai==1.51.0
 # openai==1.51.0 todavia pasa `proxies=` a httpx.Client internamente; httpx>=0.28
 # elimino ese parametro y rompe la creacion del cliente (ver docs/security-notes.md,
@@ -17,3 +18,7 @@ arize-phoenix-otel==0.6.1
 openinference-instrumentation-openai==0.1.14
 opentelemetry-sdk==1.27.0
 opentelemetry-exporter-otlp==1.27.0
+
+# Tests del gateway (UI-0B)
+pytest==8.3.3
+pytest-asyncio==0.24.0

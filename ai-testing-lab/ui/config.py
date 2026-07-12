@@ -1,0 +1,40 @@
+"""Configuración de la UI Streamlit (solo variables de entorno del servidor).
+
+Las URLs internas se usan para HTTP desde el contenedor.
+Las URLs públicas se usan solo para enlaces visibles en el navegador.
+No se aceptan URLs arbitrarias desde la interfaz.
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class UIConfig:
+    # Solicitudes HTTP desde Streamlit → Gateway (red Docker o host local).
+    api_base_url: str
+    # Enlaces para el navegador del usuario.
+    api_public_url: str
+    openapi_docs_url: str
+    phoenix_public_url: str
+    connect_timeout_s: float
+    read_timeout_s: float
+    status_cache_ttl_s: int
+
+
+def load_config() -> UIConfig:
+    api_public = os.getenv("AILAB_API_PUBLIC_URL", "http://127.0.0.1:8080").rstrip("/")
+    phoenix_public = os.getenv(
+        "AILAB_PHOENIX_PUBLIC_URL", "http://127.0.0.1:6006"
+    ).rstrip("/")
+    return UIConfig(
+        api_base_url=os.getenv("AILAB_API_BASE_URL", "http://127.0.0.1:8080").rstrip("/"),
+        api_public_url=api_public,
+        openapi_docs_url=os.getenv("AILAB_OPENAPI_DOCS_URL", f"{api_public}/docs"),
+        phoenix_public_url=phoenix_public,
+        connect_timeout_s=float(os.getenv("AILAB_HTTP_CONNECT_TIMEOUT", "3")),
+        read_timeout_s=float(os.getenv("AILAB_HTTP_READ_TIMEOUT", "15")),
+        status_cache_ttl_s=int(os.getenv("AILAB_STATUS_CACHE_TTL", "30")),
+    )

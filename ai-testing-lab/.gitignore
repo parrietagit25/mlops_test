@@ -25,6 +25,14 @@ reports/*/
 # Índice RAG persistido localmente (fuera de Docker)
 app/rag/.index/
 
+# Uploads de usuario (solo se versionan .gitkeep + .gitignore de la carpeta)
+app/rag/uploads/*
+!app/rag/uploads/.gitignore
+!app/rag/uploads/.gitkeep
+
+# Cachés de tests de la UI
+ui/.pytest_cache/
+
 # Editor / OS
 .vscode/
 .idea/

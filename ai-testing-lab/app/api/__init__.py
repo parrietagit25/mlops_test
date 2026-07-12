@@ -1,0 +1,1 @@
+"""Paquete API del gateway."""
