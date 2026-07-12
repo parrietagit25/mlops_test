@@ -36,8 +36,9 @@ y flujo, está en `docs/diagram.md` ("AI Testing Lab Architecture").
 - **Seguridad / red teaming**: promptfoo redteam + garak (documentado) +
   ModelScan (documentado, uso bajo demanda).
 - **Observabilidad**: Arize Phoenix (trazas OTLP de cada llamada al modelo).
-- **UI Streamlit local** (`ailab-ui`, puerto 8501): cliente HTTP del Gateway
-  (UI-1A). Solo la página de estado está operativa; el resto son placeholders.
+- **UI Streamlit local** (`ailab-ui`, puerto 8501): cliente HTTP del Gateway.
+  Páginas operativas: **Inicio** (estado) y **Chat** (UI-1B vía `POST /chat`).
+  El resto son placeholders (Skills…Arquitectura).
 - **Scripts de automatización** para levantar, probar y validar todo.
 
 ## Requisitos
@@ -106,12 +107,24 @@ docker compose up -d
 # Phoenix: http://127.0.0.1:6006
 ```
 
-**Limitaciones actuales (UI-1A):** solo la página *Inicio* consulta el Gateway.
-Chat, Skills, RAG, Evaluaciones, Reportes, Observabilidad y Arquitectura son
-placeholders (UI-1B…UI-1G). Limitaciones del Gateway que afectan etapas
-posteriores: Promptfoo/garak no están en la imagen API; jobs de eval
+**Limitaciones actuales:** Chat (UI-1B) e Inicio están operativos. Skills, RAG,
+Evaluaciones, Reportes, Observabilidad y Arquitectura siguen como placeholders
+(UI-1C…UI-1G).
+
+### Módulo Chat (UI-1B)
+
+- Propósito: conversar con modelos locales vía `POST /chat`.
+- Arquitectura: Streamlit → FastAPI Gateway → `LLMClient` → Ollama (Phoenix recibe trazas del Gateway).
+- Controles: modelo (`GET /models` · solo `chat_models`), system prompt, temperature (0–1.5), max tokens (1–2048), limpiar conversación.
+- Historial: únicamente en `st.session_state` (sobrevive a reruns; **se pierde** al cerrar el navegador o reiniciar `ailab-ui`). Sin base de datos.
+- System prompt: no se muestra en el hilo; se envía como `role=system` en la siguiente solicitud; no elimina el historial.
+- Metadata de respuesta: modelo, duración y `trace_id` (o «no disponible»).
+- Errores: mensajes sanitizados (Gateway caído, Ollama 503, modelo inexistente, límites, JSON inválido).
+- Sin streaming, sin autenticación, sin conexión directa a Ollama/Phoenix, sin truncado silencioso del historial.
+
+Limitaciones del Gateway: Promptfoo/garak no están en la imagen API; jobs de eval
 in-memory; `trace_id` puede ser `null`; la suite `security` no siempre
-persiste reportes.
+persiste reportes. El modelo pequeño local puede tener calidad limitada.
 
 ## Correr las suites de evaluación
 

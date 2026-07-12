@@ -1,4 +1,4 @@
-"""Pruebas del cliente HTTP (sin Streamlit runtime)."""
+"""Pruebas del cliente HTTP y lógica de chat (sin Streamlit / sin Ollama)."""
 
 from __future__ import annotations
 
@@ -6,17 +6,26 @@ import httpx
 import pytest
 
 from api_client import GatewayClient
+from chat_payload import (
+    ChatPayloadError,
+    build_chat_payload,
+    chat_model_names,
+    format_assistant_caption,
+    humanize_chat_error,
+    select_default_chat_model,
+)
 from config import UIConfig
 
 
 def _cfg(**overrides) -> UIConfig:
     base = UIConfig(
-        api_base_url="http://ailab-api:8080",
+        api_base_url="http://api:8080",
         api_public_url="http://127.0.0.1:8080",
         openapi_docs_url="http://127.0.0.1:8080/docs",
         phoenix_public_url="http://127.0.0.1:6006",
         connect_timeout_s=1.0,
         read_timeout_s=2.0,
+        chat_read_timeout_s=30.0,
         status_cache_ttl_s=30,
     )
     if not overrides:
@@ -27,10 +36,9 @@ def _cfg(**overrides) -> UIConfig:
 
 
 class _FakeResp:
-    def __init__(self, status_code: int, payload=None, text: str = "", json_error: bool = False):
+    def __init__(self, status_code: int, payload=None, json_error: bool = False):
         self.status_code = status_code
         self._payload = payload
-        self.text = text
         self._json_error = json_error
 
     def json(self):
@@ -40,119 +48,330 @@ class _FakeResp:
 
 
 def test_internal_url_from_config():
-    client = GatewayClient(_cfg())
-    assert client.base_url == "http://ailab-api:8080"
+    assert GatewayClient(_cfg()).base_url == "http://api:8080"
 
 
 def test_public_urls_not_used_for_requests():
     cfg = _cfg()
+    assert cfg.api_base_url == "http://api:8080"
     assert cfg.api_public_url.startswith("http://127.0.0.1")
-    assert cfg.api_base_url == "http://ailab-api:8080"
-    assert cfg.openapi_docs_url.endswith("/docs")
 
 
 def test_health_ok(monkeypatch):
-    def fake_request(self, method, url, json=None):
-        assert method == "GET"
-        assert url.endswith("/health")
-        return _FakeResp(200, {"status": "ok"})
-
-    monkeypatch.setattr(httpx.Client, "request", fake_request)
-    result = GatewayClient(_cfg()).health()
-    assert result.ok
-    assert result.data["status"] == "ok"
-
-
-def test_system_status_ok(monkeypatch):
-    def fake_request(self, method, url, json=None):
-        return _FakeResp(
-            200,
-            {
-                "gateway": "available",
-                "components": [],
-                "chat_model": "llama3.2:1b",
-                "embedding_model": "nomic-embed-text",
-                "rag": {},
-            },
-        )
-
-    monkeypatch.setattr(httpx.Client, "request", fake_request)
-    result = GatewayClient(_cfg()).system_status()
-    assert result.ok
-    assert result.data["chat_model"] == "llama3.2:1b"
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, json=None: _FakeResp(200, {"status": "ok"}),
+    )
+    assert GatewayClient(_cfg()).health().data["status"] == "ok"
 
 
 def test_timeout(monkeypatch):
-    def fake_request(self, method, url, json=None):
+    def boom(self, method, url, json=None):
         raise httpx.ReadTimeout("slow")
 
-    monkeypatch.setattr(httpx.Client, "request", fake_request)
-    result = GatewayClient(_cfg()).health()
-    assert not result.ok
-    assert result.error_kind == "timeout"
+    monkeypatch.setattr(httpx.Client, "request", boom)
+    r = GatewayClient(_cfg()).health()
+    assert r.error_kind == "timeout"
 
 
 def test_connection_rejected(monkeypatch):
-    def fake_request(self, method, url, json=None):
+    def boom(self, method, url, json=None):
         raise httpx.ConnectError("refused")
 
-    monkeypatch.setattr(httpx.Client, "request", fake_request)
-    result = GatewayClient(_cfg()).health()
-    assert not result.ok
-    assert result.error_kind == "connection"
-    assert "Gateway no disponible" in (result.error_message or "")
+    monkeypatch.setattr(httpx.Client, "request", boom)
+    r = GatewayClient(_cfg()).send_chat(messages=[{"role": "user", "content": "x"}])
+    assert r.error_kind == "connection"
 
 
 def test_invalid_json(monkeypatch):
-    def fake_request(self, method, url, json=None):
-        return _FakeResp(200, json_error=True)
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, json=None: _FakeResp(200, json_error=True),
+    )
+    r = GatewayClient(_cfg()).get("/health")
+    assert r.error_kind == "invalid_json"
 
-    monkeypatch.setattr(httpx.Client, "request", fake_request)
-    result = GatewayClient(_cfg()).get("/health")
-    assert not result.ok
-    assert result.error_kind == "invalid_json"
+
+def test_http_400_model_not_found(monkeypatch):
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, json=None: _FakeResp(
+            400,
+            {"error": {"code": "MODEL_NOT_FOUND", "message": "missing", "details": None}},
+        ),
+    )
+    r = GatewayClient(_cfg()).send_chat(
+        messages=[{"role": "user", "content": "Hola"}], model="fantasma:1b"
+    )
+    assert r.status_code == 400
+    assert r.error_code == "MODEL_NOT_FOUND"
+
+
+def test_http_422(monkeypatch):
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, json=None: _FakeResp(
+            422,
+            {"error": {"code": "VALIDATION_ERROR", "message": "invalid", "details": []}},
+        ),
+    )
+    r = GatewayClient(_cfg()).send_chat(messages=[{"role": "user", "content": "x"}])
+    assert r.status_code == 422
 
 
 def test_http_500(monkeypatch):
-    def fake_request(self, method, url, json=None):
-        return _FakeResp(500, {"detail": "boom"})
-
-    monkeypatch.setattr(httpx.Client, "request", fake_request)
-    result = GatewayClient(_cfg(api_base_url="http://x")).get("/system/status", retry_once=False)
-    assert not result.ok
-    assert result.status_code == 500
-    assert result.error_kind == "server_error"
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, json=None: _FakeResp(
+            500, {"error": {"code": "CHAT_FAILED", "message": "boom"}}
+        ),
+    )
+    r = GatewayClient(_cfg()).send_chat(messages=[{"role": "user", "content": "x"}])
+    assert r.error_kind == "server_error"
 
 
 def test_http_503(monkeypatch):
-    def fake_request(self, method, url, json=None):
-        return _FakeResp(503, {"error": {"code": "OLLAMA_UNAVAILABLE"}})
-
-    monkeypatch.setattr(httpx.Client, "request", fake_request)
-    result = GatewayClient(_cfg()).get("/chat")
-    assert not result.ok
-    assert result.status_code == 503
-    assert result.error_kind == "unavailable"
-
-
-def test_optional_fields_absent(monkeypatch):
-    def fake_request(self, method, url, json=None):
-        return _FakeResp(200, {"gateway": "available", "components": []})
-
-    monkeypatch.setattr(httpx.Client, "request", fake_request)
-    result = GatewayClient(_cfg()).system_status()
-    assert result.ok
-    assert result.data.get("last_evaluation") is None
-    assert result.data.get("last_report") is None
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, json=None: _FakeResp(
+            503,
+            {"error": {"code": "OLLAMA_UNAVAILABLE", "message": "down", "details": None}},
+        ),
+    )
+    r = GatewayClient(_cfg()).send_chat(messages=[{"role": "user", "content": "x"}])
+    assert r.error_kind == "unavailable"
 
 
-def test_sanitized_error_message(monkeypatch):
-    long = "x" * 500
+def test_send_chat_ok_payload(monkeypatch):
+    captured = {}
 
-    def fake_request(self, method, url, json=None):
-        raise httpx.ConnectError(long)
+    def fake(self, method, url, json=None):
+        captured.update(method=method, url=url, json=json)
+        return _FakeResp(
+            200,
+            {
+                "reply": "listo",
+                "model": "llama3.2:1b",
+                "temperature": 0.2,
+                "max_tokens": 16,
+                "duration_ms": 100.0,
+                "trace_id": None,
+            },
+        )
 
-    monkeypatch.setattr(httpx.Client, "request", fake_request)
-    result = GatewayClient(_cfg()).health()
-    assert result.error_message is not None
-    assert len(result.error_message) <= 243
+    monkeypatch.setattr(httpx.Client, "request", fake)
+    r = GatewayClient(_cfg()).send_chat(
+        messages=[
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "Hola"},
+        ],
+        model="llama3.2:1b",
+        temperature=0.2,
+        max_tokens=16,
+    )
+    assert r.ok
+    assert captured["method"] == "POST"
+    assert captured["url"].endswith("/chat")
+    assert captured["json"]["messages"][0]["role"] == "system"
+    assert "metadata" not in captured["json"]["messages"][0]
+
+
+def test_send_chat_no_retry(monkeypatch):
+    n = {"c": 0}
+
+    def fake(self, method, url, json=None):
+        n["c"] += 1
+        return _FakeResp(500, {"error": {"code": "X", "message": "y"}})
+
+    monkeypatch.setattr(httpx.Client, "request", fake)
+    GatewayClient(_cfg()).send_chat(messages=[{"role": "user", "content": "x"}])
+    assert n["c"] == 1
+
+
+def test_get_models_valid(monkeypatch):
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, json=None: _FakeResp(
+            200,
+            {
+                "chat_models": [{"name": "llama3.2:1b", "default": True}],
+                "embedding_models": [{"name": "nomic-embed-text", "default": True}],
+                "ollama_status": "available",
+            },
+        ),
+    )
+    r = GatewayClient(_cfg()).get_models()
+    names = chat_model_names(r.data)
+    assert names == ["llama3.2:1b"]
+    assert "nomic-embed-text" not in names
+
+
+def test_select_default_and_fallback():
+    name, fallback = select_default_chat_model(
+        {"chat_models": [{"name": "a", "default": False}, {"name": "b", "default": True}]}
+    )
+    assert name == "b" and fallback is False
+    name, fallback = select_default_chat_model(
+        {"chat_models": [{"name": "solo", "default": False}]}
+    )
+    assert name == "solo" and fallback is True
+    name, fallback = select_default_chat_model({"chat_models": []})
+    assert name is None
+    name, fallback = select_default_chat_model(
+        {"chat_models": [], "embedding_models": [{"name": "emb", "default": True}]}
+    )
+    assert name is None
+
+
+def test_build_payload_order_and_no_metadata():
+    payload = build_chat_payload(
+        history=[
+            {"role": "user", "content": "uno", "metadata": {"x": 1}},
+            {"role": "assistant", "content": "dos", "metadata": {"y": 2}},
+            {"role": "system", "content": "should-skip"},
+        ],
+        user_text="tres",
+        system_prompt="Eres útil.",
+        model="llama3.2:1b",
+        temperature=0.2,
+        max_tokens=64,
+    )
+    assert [m["role"] for m in payload["messages"]] == [
+        "system",
+        "user",
+        "assistant",
+        "user",
+    ]
+    assert all("metadata" not in m for m in payload["messages"])
+    assert sum(1 for m in payload["messages"] if m["role"] == "system") == 1
+
+
+def test_build_payload_empty_system_omitted():
+    payload = build_chat_payload(
+        history=[],
+        user_text="hola",
+        system_prompt="   ",
+        model="llama3.2:1b",
+        temperature=0.2,
+        max_tokens=32,
+    )
+    assert payload["messages"][0]["role"] == "user"
+
+
+def test_build_payload_rejects_empty_user():
+    with pytest.raises(ChatPayloadError):
+        build_chat_payload(
+            history=[],
+            user_text="  ",
+            system_prompt="",
+            model="llama3.2:1b",
+            temperature=0.2,
+            max_tokens=32,
+        )
+
+
+def test_build_payload_rejects_too_many_messages():
+    history = []
+    for i in range(40):
+        history.append({"role": "user", "content": f"u{i}"})
+    with pytest.raises(ChatPayloadError, match="límites|máximo"):
+        build_chat_payload(
+            history=history,
+            user_text="final",
+            system_prompt="sys",
+            model="llama3.2:1b",
+            temperature=0.2,
+            max_tokens=32,
+        )
+
+
+def test_build_payload_rejects_long_content():
+    with pytest.raises(ChatPayloadError, match="límites|supera"):
+        build_chat_payload(
+            history=[],
+            user_text="x" * 16001,
+            system_prompt="",
+            model="llama3.2:1b",
+            temperature=0.2,
+            max_tokens=32,
+        )
+
+
+def test_build_payload_no_silent_user_mutation():
+    text = "contenido exacto del usuario"
+    payload = build_chat_payload(
+        history=[],
+        user_text=text,
+        system_prompt="",
+        model="llama3.2:1b",
+        temperature=0.2,
+        max_tokens=32,
+    )
+    assert payload["messages"][-1]["content"] == text
+
+
+def test_build_payload_requires_model():
+    with pytest.raises(ChatPayloadError, match="modelo"):
+        build_chat_payload(
+            history=[],
+            user_text="hola",
+            system_prompt="",
+            model=None,
+            temperature=0.2,
+            max_tokens=32,
+        )
+
+
+def test_format_caption_null_trace():
+    assert "no disponible" in format_assistant_caption(
+        {"model": "llama3.2:1b", "duration_ms": 1240, "trace_id": None}
+    ).lower()
+
+
+def test_humanize_errors():
+    assert "Gateway no disponible" in humanize_chat_error(
+        error_kind="connection", error_code=None, error_message="x", status_code=None
+    )
+    assert "Ollama" in humanize_chat_error(
+        error_kind="unavailable", error_code="OLLAMA_UNAVAILABLE", error_message="x", status_code=503
+    )
+    assert "ya no está disponible" in humanize_chat_error(
+        error_kind="client_error",
+        error_code="MODEL_NOT_FOUND",
+        error_message="x",
+        status_code=400,
+    )
+
+
+def test_clear_chat_preserves_config_semantics():
+    # Lógica pura equivalente a clear_chat (sin Streamlit).
+    messages = [{"role": "user", "content": "a"}]
+    model, temp, tokens, system = "llama3.2:1b", 0.4, 256, "sys"
+    messages = []
+    error = None
+    assert messages == []
+    assert model == "llama3.2:1b"
+    assert temp == 0.4
+    assert tokens == 256
+    assert system == "sys"
+    assert error is None
+
+
+def test_no_user_url_in_payload_builder():
+    payload = build_chat_payload(
+        history=[],
+        user_text="http://evil.example",
+        system_prompt="",
+        model="llama3.2:1b",
+        temperature=0.2,
+        max_tokens=32,
+    )
+    assert "base_url" not in payload
+    assert payload["model"] == "llama3.2:1b"

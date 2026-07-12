@@ -8,7 +8,6 @@ from state import PAGE_KEYS, PAGE_HOME
 
 # Etapas futuras — solo informativo; sin botones operativos.
 _PENDING_STAGE = {
-    "Chat": "UI-1B",
     "Skills": "UI-1C",
     "RAG": "UI-1D",
     "Evaluaciones": "UI-1E",
@@ -41,6 +40,8 @@ def render_sidebar() -> str:
     pending = _PENDING_STAGE.get(active)
     if pending:
         st.sidebar.caption(f"Módulo pendiente · se implementará en **{pending}**.")
+    elif active == "Chat":
+        st.sidebar.caption("Módulo operativo (UI-1B · Chat).")
     else:
         st.sidebar.caption("Módulo operativo (UI-1A).")
 

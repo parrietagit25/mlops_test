@@ -21,6 +21,7 @@ class ApiResult:
     data: Any = None
     error_kind: str | None = None
     error_message: str | None = None
+    error_code: str | None = None
 
 
 def _sanitize(message: str, max_len: int = 240) -> str:
@@ -28,6 +29,20 @@ def _sanitize(message: str, max_len: int = 240) -> str:
     if len(text) > max_len:
         return text[: max_len - 3] + "..."
     return text
+
+
+def _parse_gateway_error(resp: httpx.Response) -> tuple[str | None, str]:
+    """Extrae code/message del ErrorResponse del Gateway si está disponible."""
+    try:
+        body = resp.json()
+    except ValueError:
+        return None, _sanitize(f"Gateway respondió {resp.status_code}.")
+    if isinstance(body, dict) and isinstance(body.get("error"), dict):
+        err = body["error"]
+        code = err.get("code")
+        msg = err.get("message") or f"Gateway respondió {resp.status_code}."
+        return (str(code) if code else None), _sanitize(str(msg))
+    return None, _sanitize(f"Gateway respondió {resp.status_code}.")
 
 
 class GatewayClient:
@@ -53,14 +68,16 @@ class GatewayClient:
         *,
         json_body: dict | None = None,
         retry_once: bool = False,
+        timeout: httpx.Timeout | None = None,
     ) -> ApiResult:
         url = f"{self.cfg.api_base_url}{path}"
         attempts = 2 if retry_once else 1
         last: ApiResult | None = None
+        req_timeout = timeout or self._timeout
 
         for attempt in range(attempts):
             try:
-                with httpx.Client(timeout=self._timeout) as client:
+                with httpx.Client(timeout=req_timeout) as client:
                     resp = client.request(method, url, json=json_body)
             except httpx.ConnectError as exc:
                 last = ApiResult(
@@ -90,33 +107,36 @@ class GatewayClient:
                 continue
 
             if resp.status_code == 503:
+                code, msg = _parse_gateway_error(resp)
                 return ApiResult(
                     ok=False,
                     status_code=503,
                     error_kind="unavailable",
-                    error_message="Servicio requerido no disponible (503).",
+                    error_message=msg or "Servicio requerido no disponible (503).",
+                    error_code=code,
                 )
 
             if resp.status_code >= 500:
+                code, msg = _parse_gateway_error(resp)
                 last = ApiResult(
                     ok=False,
                     status_code=resp.status_code,
                     error_kind="server_error",
-                    error_message=_sanitize(
-                        f"Gateway respondió {resp.status_code}."
-                    ),
+                    error_message=msg,
+                    error_code=code,
                 )
-                # Un reintento breve solo en consultas de estado (retry_once).
                 if retry_once and attempt == 0:
                     continue
                 return last
 
             if resp.status_code >= 400:
+                code, msg = _parse_gateway_error(resp)
                 return ApiResult(
                     ok=False,
                     status_code=resp.status_code,
                     error_kind="client_error",
-                    error_message=_sanitize(f"Solicitud rechazada ({resp.status_code})."),
+                    error_message=msg,
+                    error_code=code,
                 )
 
             try:
@@ -141,8 +161,16 @@ class GatewayClient:
     def get(self, path: str, *, retry_once: bool = False) -> ApiResult:
         return self._request("GET", path, retry_once=retry_once)
 
-    def post(self, path: str, json_body: dict | None = None) -> ApiResult:
-        return self._request("POST", path, json_body=json_body, retry_once=False)
+    def post(
+        self,
+        path: str,
+        json_body: dict | None = None,
+        *,
+        timeout: httpx.Timeout | None = None,
+    ) -> ApiResult:
+        return self._request(
+            "POST", path, json_body=json_body, retry_once=False, timeout=timeout
+        )
 
     def health(self) -> ApiResult:
         return self.get("/health", retry_once=True)
@@ -153,8 +181,36 @@ class GatewayClient:
     def models(self) -> ApiResult:
         return self.get("/models", retry_once=True)
 
+    def get_models(self) -> ApiResult:
+        """Alias explícito para UI-1B (mismo contrato GET /models)."""
+        return self.models()
+
     def rag_status(self) -> ApiResult:
         return self.get("/rag/status", retry_once=True)
 
     def observability(self) -> ApiResult:
         return self.get("/observability", retry_once=True)
+
+    def send_chat(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        temperature: float = 0.2,
+        max_tokens: int = 512,
+    ) -> ApiResult:
+        """POST /chat — sin reintento automático (inferencia no idempotente)."""
+        body: dict[str, Any] = {
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if model:
+            body["model"] = model
+        chat_timeout = httpx.Timeout(
+            connect=self.cfg.connect_timeout_s,
+            read=self.cfg.chat_read_timeout_s,
+            write=self.cfg.chat_read_timeout_s,
+            pool=self.cfg.connect_timeout_s,
+        )
+        return self.post("/chat", json_body=body, timeout=chat_timeout)
