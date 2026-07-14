@@ -31,8 +31,9 @@ services:
   # -------------------------------------------------------------------------
   api:
     build:
-      context: ./app
-      dockerfile: Dockerfile
+      # Raíz del lab: hornea venvs DeepEval/Ragas desde evals/*/requirements.txt
+      context: .
+      dockerfile: app/Dockerfile
     container_name: ailab-api
     env_file:
       - .env

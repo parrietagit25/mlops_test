@@ -8,13 +8,28 @@
 # Diseño: cada sección es independiente. Si una falla o se omite, las demás
 # igual se ejecutan — el script nunca aborta por completo a mitad de camino.
 # El resumen final dice exactamente qué corrió, qué falló y qué se omitió.
+#
+# EVAL-RUNTIME-1: persiste reports/<fecha>/<hora>/security/{output.log,summary.md}
+# para que el Gateway pueda devolver report_ref aunque garak/npx estén ausentes.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-[ -f .env ] && set -a && source .env && set +a
+# shellcheck source=lib/source_lab_env.sh
+source "$(dirname "$0")/lib/source_lab_env.sh"
+source_lab_env
 
 GARAK_STATUS="omitido (no instalado)"
 PROMPTFOO_STATUS="omitido (npx no disponible)"
+
+RUN_DATE="$(date +%Y-%m-%d)"
+RUN_TIME="$(date +%H%M%S)"
+REPORT_ROOT="reports/${RUN_DATE}/${RUN_TIME}"
+REPORT_DIR="${REPORT_ROOT}/security"
+mkdir -p "$REPORT_DIR"
+LOG_FILE="${REPORT_DIR}/output.log"
+
+# Duplicar stdout/stderr al log persistente (report_store / report_ref).
+exec > >(tee -a "$LOG_FILE") 2>&1
 
 echo "==================================================================="
 echo " ADVERTENCIA: esto genera prompts adversariales (jailbreak, prompt"
@@ -89,6 +104,25 @@ echo " RESUMEN de seguridad"
 echo "   garak:      $GARAK_STATUS"
 echo "   promptfoo:  $PROMPTFOO_STATUS"
 echo "==================================================================="
+echo "==> Reporte persistente: ${REPORT_DIR}"
+
+SUMMARY_FILE="${REPORT_ROOT}/summary.md"
+{
+  echo "# Resumen de seguridad — ai-testing-lab"
+  echo ""
+  echo "**Fecha:** ${RUN_DATE} ${RUN_TIME}"
+  echo ""
+  echo "| Herramienta | Estado |"
+  echo "|---|---|"
+  echo "| garak | ${GARAK_STATUS} |"
+  echo "| promptfoo redteam | ${PROMPTFOO_STATUS} |"
+  echo ""
+  echo "## Notas"
+  echo ""
+  echo "- Este script termina siempre en exit 0 (reporte de estado, no gate CI)."
+  echo "- garak y Node/npx pueden estar ausentes en la imagen \`ailab-api\` (EVAL-RUNTIME-1)."
+  echo "- Detalle: \`security/output.log\`."
+} > "$SUMMARY_FILE"
 
 # El script termina en 0 siempre: es un reporte de estado, no un gate de
 # CI. Si necesitas que falle el build cuando algo no corrió, revisa el

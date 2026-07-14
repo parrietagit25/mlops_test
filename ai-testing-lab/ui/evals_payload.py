@@ -20,25 +20,26 @@ SUMMARY_DISPLAY_MAX = 2_000
 JOB_ID_RE = re.compile(r"^[a-f0-9]{32}$")
 REPORT_ID_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{6}$")
 
-# Matriz documentada (ailab-api: sin Node/npx ni garak en imagen).
+# Matriz documentada post EVAL-RUNTIME-1 (ailab-api: venvs DeepEval/Ragas en /opt;
+# sin Node/npx ni garak).
 SUITE_CATALOG: dict[str, dict[str, Any]] = {
     "promptfoo": {
         "label": "Promptfoo",
         "description": "Pruebas de prompts y flujos end-to-end vía promptfoo.",
         "availability": "no_disponible",
-        "missing_deps": ["Node.js / npx (no instalado en ailab-api)"],
+        "missing_deps": ["Node.js / npx (no instalado en ailab-api; EVAL-RUNTIME-2)"],
     },
     "deepeval": {
         "label": "DeepEval",
         "description": "Métricas LLM con pytest sobre evals/deepeval.",
-        "availability": "degradada",
-        "missing_deps": ["venv + pip install en primer uso; puede tardar varios minutos"],
+        "availability": "disponible",
+        "missing_deps": [],
     },
     "ragas": {
         "label": "Ragas",
         "description": "Evaluación RAG con métricas de faithfulness/relevancy.",
-        "availability": "degradada",
-        "missing_deps": ["venv + índice RAG; requiere stack y embeddings activos"],
+        "availability": "disponible",
+        "missing_deps": ["Requiere índice RAG y embeddings Ollama activos"],
     },
     "security": {
         "label": "Security",
@@ -50,7 +51,7 @@ SUITE_CATALOG: dict[str, dict[str, Any]] = {
         "label": "Run All",
         "description": "Ejecuta las cuatro suites en secuencia y genera summary.md.",
         "availability": "degradada",
-        "missing_deps": ["Depende de todas las suites; varias herramientas ausentes"],
+        "missing_deps": ["Promptfoo/garak ausentes; hereda omisiones de security"],
     },
 }
 

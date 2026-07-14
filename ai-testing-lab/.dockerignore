@@ -1,0 +1,14 @@
+.git
+.gitignore
+reports
+**/__pycache__
+**/.pytest_cache
+**/.venv
+**/Scripts
+ui
+observability
+docs
+infra
+*.md
+!evals/**/README.md
+.env

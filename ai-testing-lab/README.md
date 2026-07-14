@@ -110,9 +110,9 @@ docker compose up -d
 
 **Limitaciones actuales:** Inicio, Chat (UI-1B), Skills (UI-1C), RAG (UI-1D) y
 Evaluaciones (UI-1E) están operativos en la UI. Reportes, Observabilidad y
-Arquitectura siguen como placeholders (UI-1F…UI-1G). El **runtime** de
-evaluaciones sigue parcialmente degradado (Promptfoo/garak ausentes en
-`ailab-api`; jobs in-memory).
+Arquitectura siguen como placeholders (UI-1F…UI-1G). Tras **EVAL-RUNTIME-1**,
+DeepEval y Ragas usan venvs horneados en `ailab-api`; Promptfoo/garak siguen
+ausentes; jobs de eval aislados por `job_id` (in-memory).
 
 ### Módulo Chat (UI-1B)
 
@@ -161,14 +161,16 @@ evaluaciones sigue parcialmente degradado (Promptfoo/garak ausentes en
 - Reportes: solo referencia (`report_ref`) y enlace público al Gateway (`GET /reports/{id}`).
   Visor completo en UI-1F.
 - Jobs in-memory: se pierden al reiniciar `ailab-api`. Sin cancelación ni persistencia.
-- Disponibilidad documentada en tarjetas:
-  - **Promptfoo**: no disponible (sin Node/npx en imagen API).
-  - **Security**: degradada (garak ausente; promptfoo redteam omitido sin npx).
-  - **DeepEval / Ragas / all**: degradadas (venv/deps; `all` hereda omisiones).
+- Disponibilidad documentada en tarjetas (EVAL-RUNTIME-1):
+  - **DeepEval / Ragas**: disponibles vía venvs en `/opt/ailab/venvs/` (imagen API).
+  - **Promptfoo**: no disponible (sin Node/npx; pendiente EVAL-RUNTIME-2).
+  - **Security**: degradada (garak ausente; promptfoo redteam omitido sin npx);
+    genera `reports/<fecha>/<hora>/security/` para `report_ref`.
+  - **Run All**: degradada (hereda fallo de Promptfoo / omisiones de security).
 
 Limitaciones del Gateway: Promptfoo/garak no están en la imagen API; jobs de eval
-in-memory; `trace_id` puede ser `null`; la suite `security` no siempre
-persiste reportes. El modelo pequeño local puede tener calidad limitada.
+in-memory y por directorio `/tmp/ailab_run/<job_id>/`; `trace_id` puede ser `null`.
+El modelo pequeño local puede tener calidad limitada.
 
 ## Correr las suites de evaluación
 

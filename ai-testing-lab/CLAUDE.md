@@ -19,45 +19,43 @@ qué no se debe romper y cuál es el siguiente paso exacto.
 | Arquitectura | Navegador → Streamlit → FastAPI Gateway → Ollama / Skills / RAG / Evals / Reports → Phoenix |
 | UI operativa | Inicio, Chat, Skills, RAG, Evaluaciones |
 | UI pendiente | Reportes, Observabilidad (UI-1F), Arquitectura visual (UI-1G), cierre UI-1H |
-| HEAD versionado | `773c31a` — `feat(local-ui): add controlled RAG interface` |
-| Working tree | Contiene **UI-1E sin commit** (cambios locales + `ui/evals_payload.py` untracked) |
-| Runtime evals | **Degradado** (Promptfoo/garak ausentes; venv/pip frágil en imagen API) |
-| Baseline tests | API **38** · UI **95** (durante UI-1E) |
+| HEAD versionado | Verificar con `git rev-parse --short HEAD` |
+| Working tree | Puede incluir cambios EVAL-RUNTIME-1 sin commit |
+| Runtime evals | **EVAL-RUNTIME-1:** DeepEval/Ragas operativos en Docker; Promptfoo/garak ausentes; jobs aislados por `job_id` |
+| Baseline tests | API **41** · UI **95**; verificar tras cambios |
 | Fase 2 | Solo diseño en `infra/future/` y `docs/phase-2-multicloud.md` — **no iniciada** |
 
-**Conclusión actual:** UI-1E funcional como interfaz; runtime de evaluaciones
-parcialmente degradado. No declarar el subsistema de evals como plenamente
-operativo.
+**Conclusión actual:** UI-1E funcional; **EVAL-RUNTIME-1** repara DeepEval/Ragas y el
+aislamiento de jobs. Promptfoo/garak siguen ausentes (EVAL-RUNTIME-2). No declarar
+el subsistema de evals como plenamente operativo.
 
 ---
 
 ## Próxima sesión — empezar aquí
 
-Orden **obligatorio**:
+Orden recomendado tras EVAL-RUNTIME-1:
 
-1. Revisar los cambios locales de **UI-1E** (`git status`, `git diff`).
-2. Ejecutar tests completos (API + UI) dentro de los contenedores.
-3. Prueba manual de la vista **Evaluaciones** en `http://127.0.0.1:8501`.
-4. Crear **commit de checkpoint de UI-1E** (solo cuando el usuario lo autorice).
-5. Confirmar working tree limpio.
-6. Iniciar **EVAL-RUNTIME-1** (etapa independiente; ver abajo).
+1. Confirmar tests + integración DeepEval/Ragas/Security (`report_ref`).
+2. Commit de checkpoint **EVAL-RUNTIME-1** (cuando el usuario lo autorice).
+3. Opcional: **EVAL-RUNTIME-2** (Node/Promptfoo y/o garak) — requiere autorización.
+4. **UI-1F** — Reportes y Observabilidad.
+5. **UI-1G** — Arquitectura visual.
+6. **UI-1H** — Seguridad, regresión y cierre de la Fase 1 UI.
 
-### EVAL-RUNTIME-1 (después del commit de UI-1E)
+### EVAL-RUNTIME-1 (implementado en esta línea de trabajo)
 
-Etapa para reparar el runtime de evaluaciones **dentro de Docker**, sin mezclar
-con UI-1F:
+- DeepEval / Ragas: venvs en `/opt/ailab/venvs/` horneados en la imagen API.
+- Jobs: `/tmp/ailab_run/<job_id>/` (sin race por `rmtree` compartido).
+- Security: persiste `reports/<fecha>/<hora>/security/` + `summary.md`.
+- Promptfoo / garak: **no** instalados (quedan para EVAL-RUNTIME-2).
 
-- Reparar **DeepEval** en la imagen / flujo Docker.
-- Reparar **Ragas** en la imagen / flujo Docker.
-- Decidir cómo integrar **Node.js/npx** y **Promptfoo** (autorización explícita).
-- Decidir si instalar **garak** (autorización explícita).
-- Directorios temporales **separados por job** (evitar race en `/tmp/ailab_run`).
-- Reportes consistentes para **Security** (`report_ref` cuando aplique).
-- Revalidar **Run All**.
-- No depender de venvs creados en Windows; evitar venvs frágiles en runtime
-  si pueden prepararse en **build**.
+### EVAL-RUNTIME-2 (opcional, autorización explícita)
 
-### Después de EVAL-RUNTIME-1
+- Instalar Node.js 18+ / npx y validar Promptfoo.
+- Decidir e instalar garak si se requiere red teaming real.
+- Revalidar Run All hacia más suites verdes.
+
+### Después de EVAL-RUNTIME-*
 
 1. **UI-1F** — Reportes y Observabilidad.
 2. **UI-1G** — Arquitectura visual.
@@ -191,30 +189,16 @@ servicio Compose `api`). Enlaces del navegador usan `127.0.0.1`.
 | UI-1C — Skills | Cerrada y versionada |
 | UI-1D — RAG | Cerrada y versionada |
 | UI-1D.1 — Límite visual de upload | Cerrada y versionada (`maxUploadSize = 1`) |
-| **UI-1E — Evaluaciones** | **Interfaz implementada y validada; sin commit** |
+| **UI-1E — Evaluaciones** | Cerrada y versionada (`3e1c7d3`) |
+| **EVAL-RUNTIME-1** | Implementado (DeepEval/Ragas + aislamiento; sin Node/garak) |
+| EVAL-RUNTIME-2 | Pendiente (Node/Promptfoo / garak — autorización) |
 | UI-1F — Reportes y Observabilidad | Pendiente |
 | UI-1G — Arquitectura visual | Pendiente |
 | UI-1H — Seguridad y cierre Fase 1 UI | Pendiente |
-| EVAL-RUNTIME-1 | Pendiente (después del commit UI-1E) |
 | Fase 2 multi-cloud | Solo diseño — **no iniciada** |
 
-**Git (verificado):**
-
-- Branch: `main`
-- HEAD versionado: `773c31a` — `feat(local-ui): add controlled RAG interface`
-- Working tree: cambios de UI-1E **sin commit** (archivos UI/docs Compose +
-  `ui/evals_payload.py` untracked). **UI-1E no está versionada.**
-
-Commits recientes relevantes:
-
-```text
-773c31a feat(local-ui): add controlled RAG interface
-ded559e feat(local-ui): add Skills execution interface
-6a51e63 feat(local-ui): add Gateway-backed chat interface
-15d28f9 feat(local-ui): add secure gateway contracts and Streamlit scaffold
-6bdfb64 Cierre de validación de Fase 1: fixes de infraestructura y reproducibilidad
-```
-
+**Git:** branch `main`; verificar `HEAD` y working tree con `git status` / `git log -3`.
+UI-1E ya versionada; EVAL-RUNTIME-1 puede estar sin commit hasta autorización.
 ---
 
 ## Estructura del repositorio (orientación)
@@ -324,7 +308,8 @@ Consume: `POST /evals/{suite}/run`, `GET /evals/jobs`, `GET /evals/jobs/{job_id}
 - Degradación visual («Completado con limitaciones») inferida del `summary` real.
 - Reportes: solo `report_ref` + enlace público al Gateway (visor completo = UI-1F).
 
-**La UI está lista; el runtime Docker sigue degradado** (ver tabla siguiente).
+**La UI está lista.** Tras EVAL-RUNTIME-1, DeepEval/Ragas corren con venvs de
+imagen; Promptfoo/garak siguen ausentes (ver tabla).
 
 ---
 
@@ -332,22 +317,21 @@ Consume: `POST /evals/{suite}/run`, `GET /evals/jobs`, `GET /evals/jobs/{job_id}
 
 | Suite | Estado actual | Problema principal |
 |---|---|---|
-| Promptfoo | No operativo | Node.js / `npx` ausente en imagen `ailab-api` |
-| DeepEval | Degradado / falla | venv / `ensurepip` en imagen slim; scripts frágiles |
-| Ragas | Degradado / falla | venv / pip y entorno de ejecución bajo `/tmp/ailab_run` |
-| Security | Parcial | `garak` y Promptfoo redteam pueden omitirse; a veces sin `report_ref` |
-| Run All | Parcial | Hereda fallos y omisiones anteriores |
+| Promptfoo | No operativo | Node.js / `npx` ausente (EVAL-RUNTIME-2) |
+| DeepEval | Operativo en Docker | Venv horneado en `/opt/ailab/venvs/deepeval` |
+| Ragas | Operativo en Docker | Venv horneado; requiere índice RAG + embeddings |
+| Security | Parcial | `garak` y Promptfoo redteam omitidos; **sí** persiste reporte |
+| Run All | Parcial | Hereda fallo de Promptfoo / omisiones de security |
 
 **Limitaciones estructurales (Gateway):**
 
 - Jobs **in-memory**; se pierden al reiniciar `ailab-api`.
 - Sin cancelación real en Fase 1.
-- Posible condición de carrera al preparar `/tmp/ailab_run` con jobs concurrentes.
-- Algunos reportes pueden generarse aunque el job global falle.
+- Árbol temporal **por job**: `/tmp/ailab_run/<job_id>/`.
 - La UI distingue degradación vía el resumen sanitizado del job.
 
-**Conclusión:** UI-1E funcional; runtime de evaluaciones parcialmente degradado.
-
+**Conclusión:** EVAL-RUNTIME-1 parcialmente cerrado: DeepEval/Ragas operativos
+en Docker; Promptfoo/garak siguen ausentes; jobs aislados por `job_id`.
 ---
 
 ## Roadmap — Model Expansion *(no implementado)*
@@ -497,7 +481,7 @@ Checklist típico tras un cambio:
 
 | Suite | Tests |
 |---|---|
-| API (`app/tests`) | **38 passed** |
+| API (`app/tests`) | **41 passed** |
 | UI (`ui/tests`) | **95 passed** |
 
 Si el número crece por tests legítimos nuevos, actualizar este baseline.

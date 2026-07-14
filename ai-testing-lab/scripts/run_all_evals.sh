@@ -11,7 +11,9 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-[ -f .env ] && set -a && source .env && set +a
+# shellcheck source=lib/source_lab_env.sh
+source "$(dirname "$0")/lib/source_lab_env.sh"
+source_lab_env
 
 RUN_DATE="$(date +%Y-%m-%d)"
 RUN_TIME="$(date +%H%M%S)"
