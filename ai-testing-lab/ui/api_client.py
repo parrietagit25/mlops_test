@@ -307,3 +307,55 @@ class GatewayClient:
             retry_once=False,
             timeout=rag_timeout,
         )
+
+    def run_evaluation(self, suite: str) -> ApiResult:
+        """POST /evals/{suite}/run — sin reintento automático."""
+        try:
+            from evals_payload import assert_suite_allowed
+
+            name = assert_suite_allowed(suite)
+        except ValueError as exc:
+            return ApiResult(
+                ok=False,
+                status_code=None,
+                error_kind="client_error",
+                error_message=str(exc),
+            )
+        timeout = httpx.Timeout(
+            connect=self.cfg.connect_timeout_s,
+            read=self.cfg.eval_create_timeout_s,
+            write=self.cfg.eval_create_timeout_s,
+            pool=self.cfg.connect_timeout_s,
+        )
+        return self.post(f"/evals/{name}/run", timeout=timeout)
+
+    def get_evaluation_jobs(self) -> ApiResult:
+        """GET /evals/jobs."""
+        timeout = httpx.Timeout(
+            connect=self.cfg.connect_timeout_s,
+            read=self.cfg.eval_read_timeout_s,
+            write=self.cfg.eval_read_timeout_s,
+            pool=self.cfg.connect_timeout_s,
+        )
+        return self.get("/evals/jobs", retry_once=True, timeout=timeout)
+
+    def get_evaluation_job(self, job_id: str) -> ApiResult:
+        """GET /evals/jobs/{job_id} — job_id validado como identificador."""
+        try:
+            from evals_payload import validate_job_id
+
+            jid = validate_job_id(job_id)
+        except ValueError as exc:
+            return ApiResult(
+                ok=False,
+                status_code=None,
+                error_kind="client_error",
+                error_message=str(exc),
+            )
+        timeout = httpx.Timeout(
+            connect=self.cfg.connect_timeout_s,
+            read=self.cfg.eval_read_timeout_s,
+            write=self.cfg.eval_read_timeout_s,
+            pool=self.cfg.connect_timeout_s,
+        )
+        return self.get(f"/evals/jobs/{jid}", retry_once=False, timeout=timeout)

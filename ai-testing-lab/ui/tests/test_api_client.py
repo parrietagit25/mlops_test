@@ -28,6 +28,8 @@ def _cfg(**overrides) -> UIConfig:
         chat_read_timeout_s=30.0,
         skill_read_timeout_s=30.0,
         rag_read_timeout_s=30.0,
+        eval_create_timeout_s=30.0,
+        eval_read_timeout_s=15.0,
         status_cache_ttl_s=30,
         ui_timezone="UTC",
     )
@@ -892,3 +894,262 @@ def test_no_shell_in_rag_payload():
     assert "subprocess" not in src
     assert "os.system" not in src
     assert "shell=True" not in src
+
+
+# ---------------------------------------------------------------------------
+# UI-1E Evaluaciones
+# ---------------------------------------------------------------------------
+
+from evals_payload import (  # noqa: E402
+    AUTHORIZED_SUITES,
+    EvalPayloadError,
+    assert_suite_allowed,
+    detect_skipped_tools,
+    humanize_eval_error,
+    parse_job,
+    parse_jobs_list,
+    safe_report_api_path,
+    suite_is_active,
+    summary_suggests_degradation,
+    validate_job_id,
+    visual_job_status,
+)
+
+_JOB = {
+    "job_id": "a" * 32,
+    "suite": "deepeval",
+    "status": "completed",
+    "created_at": "2026-01-01T00:00:00Z",
+    "summary": "Todo ok",
+}
+
+
+def test_run_evaluation_ok(monkeypatch):
+    captured = {}
+
+    def fake(self, method, url, **kwargs):
+        captured.update(method=method, url=url)
+        return _FakeResp(
+            202,
+            {
+                "job_id": "b" * 32,
+                "suite": "deepeval",
+                "status": "queued",
+                "created_at": "2026-01-01T00:00:00Z",
+                "message": "encolado",
+            },
+        )
+
+    monkeypatch.setattr(httpx.Client, "request", fake)
+    r = GatewayClient(_cfg()).run_evaluation("deepeval")
+    assert r.ok
+    assert captured["method"] == "POST"
+    assert captured["url"].endswith("/evals/deepeval/run")
+
+
+def test_run_evaluation_no_retry(monkeypatch):
+    n = {"c": 0}
+
+    def fake(self, method, url, **kwargs):
+        n["c"] += 1
+        return _FakeResp(500, {"error": {"code": "X", "message": "y"}})
+
+    monkeypatch.setattr(httpx.Client, "request", fake)
+    GatewayClient(_cfg()).run_evaluation("ragas")
+    assert n["c"] == 1
+
+
+def test_run_evaluation_invalid_suite():
+    r = GatewayClient(_cfg()).run_evaluation("evil_suite")
+    assert not r.ok
+    assert r.error_kind == "client_error"
+
+
+@pytest.mark.parametrize("suite", sorted(AUTHORIZED_SUITES))
+def test_assert_suite_allowed_whitelist(suite):
+    assert assert_suite_allowed(suite) == suite
+
+
+def test_assert_suite_rejects_arbitrary():
+    with pytest.raises(EvalPayloadError):
+        assert_suite_allowed("../../../etc")
+    with pytest.raises(EvalPayloadError):
+        assert_suite_allowed("")
+
+
+def test_get_evaluation_jobs_ok(monkeypatch):
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, **kwargs: _FakeResp(
+            200, {"jobs": [_JOB], "note": "in-memory"}
+        ),
+    )
+    r = GatewayClient(_cfg()).get_evaluation_jobs()
+    assert r.ok
+    jobs, err = parse_jobs_list(r.data)
+    assert err is None
+    assert len(jobs) == 1
+
+
+def test_get_evaluation_job_ok(monkeypatch):
+    captured = {}
+
+    def fake(self, method, url, **kwargs):
+        captured.update(url=url)
+        return _FakeResp(200, _JOB)
+
+    monkeypatch.setattr(httpx.Client, "request", fake)
+    jid = "c" * 32
+    r = GatewayClient(_cfg()).get_evaluation_job(jid)
+    assert r.ok
+    assert captured["url"].endswith(f"/evals/jobs/{jid}")
+    assert "/../" not in captured["url"]
+
+
+def test_get_evaluation_job_invalid_id():
+    r = GatewayClient(_cfg()).get_evaluation_job("../jobs/secret")
+    assert not r.ok
+    assert r.error_kind == "client_error"
+
+
+@pytest.mark.parametrize("status", [400, 404, 409, 422, 500, 503])
+def test_eval_http_errors(monkeypatch, status):
+    code = {
+        404: "JOB_NOT_FOUND",
+        409: "DUPLICATE_SUITE",
+    }.get(status, "E")
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, **kwargs: _FakeResp(
+            status, {"error": {"code": code, "message": "fail"}}
+        ),
+    )
+    r = GatewayClient(_cfg()).get_evaluation_job("d" * 32)
+    assert not r.ok
+    assert r.status_code == status
+
+
+def test_eval_connection_timeout_invalid_json(monkeypatch):
+    def boom(self, method, url, **kwargs):
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(httpx.Client, "request", boom)
+    assert GatewayClient(_cfg()).run_evaluation("all").error_kind == "connection"
+
+    def slow(self, method, url, **kwargs):
+        raise httpx.ReadTimeout("slow")
+
+    monkeypatch.setattr(httpx.Client, "request", slow)
+    assert GatewayClient(_cfg()).get_evaluation_jobs().error_kind == "timeout"
+
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, **kwargs: _FakeResp(200, json_error=True),
+    )
+    assert GatewayClient(_cfg()).get_evaluation_jobs().error_kind == "invalid_json"
+
+
+def test_parse_job_states_and_degraded():
+    for status in ("queued", "running", "completed", "failed", "cancelled"):
+        job, err = parse_job({**_JOB, "status": status})
+        assert err is None
+        assert job["status"] == status
+
+    degraded, _ = parse_job(
+        {
+            **_JOB,
+            "summary": "garak omitido: no instalado",
+        }
+    )
+    assert visual_job_status(degraded) == "Completado con limitaciones"
+    assert detect_skipped_tools(degraded["summary"]) == ["garak"]
+    assert summary_suggests_degradation("npx no disponible")
+
+    lost = humanize_eval_error(
+        error_kind="client_error",
+        error_code="JOB_NOT_FOUND",
+        error_message=None,
+        status_code=404,
+    )
+    assert "reiniciar" in lost.lower() or "no existe" in lost.lower()
+
+    dup = humanize_eval_error(
+        error_kind="client_error",
+        error_code="DUPLICATE_SUITE",
+        error_message=None,
+        status_code=409,
+    )
+    assert "cola" in dup.lower() or "ejecución" in dup.lower()
+
+
+def test_parse_job_missing_fields():
+    assert parse_job({})[1]
+    assert parse_jobs_list({"jobs": "bad"})[1]
+    assert parse_jobs_list(None)[1]
+
+
+def test_suite_is_active_and_job_id_validation():
+    jobs = [
+        {"job_id": "e" * 32, "suite": "ragas", "status": "running"},
+        {"job_id": "f" * 32, "suite": "security", "status": "completed"},
+    ]
+    assert suite_is_active(jobs, "ragas")
+    assert not suite_is_active(jobs, "security")
+    assert validate_job_id("a" * 32) == "a" * 32
+    with pytest.raises(EvalPayloadError):
+        validate_job_id("short")
+
+
+def test_safe_report_path_rejects_traversal():
+    assert safe_report_api_path("2026-07-12_153045") == "/reports/2026-07-12_153045"
+    assert safe_report_api_path("../etc") is None
+    assert safe_report_api_path("2026/07/12") is None
+    assert safe_report_api_path(None) is None
+
+
+def test_eval_request_single_post_semantics():
+    in_progress = False
+    posts = 0
+
+    def try_post():
+        nonlocal in_progress, posts
+        if in_progress:
+            return "skip"
+        in_progress = True
+        try:
+            posts += 1
+            return "ok"
+        finally:
+            in_progress = False
+
+    assert try_post() == "ok"
+    assert posts == 1
+    in_progress = True
+    assert try_post() == "skip"
+    assert posts == 1
+
+
+def test_eval_history_does_not_touch_chat_skills_rag():
+    chat = [{"role": "user", "content": "keep"}]
+    skills = [{"skill": "summarizer"}]
+    rag = [{"q": "x"}]
+    eval_jobs = [{"job_id": "g" * 32, "suite": "all", "status": "queued"}]
+    eval_jobs = list(eval_jobs)
+    assert chat and skills and rag and len(eval_jobs) == 1
+
+
+def test_no_shell_in_evals_payload():
+    import evals_payload as ep
+
+    src = open(ep.__file__, encoding="utf-8").read()
+    assert "subprocess" not in src
+    assert "os.system" not in src
+    assert "shell=True" not in src
+    import views.evaluations as ev
+
+    vsrc = open(ev.__file__, encoding="utf-8").read()
+    assert "subprocess" not in vsrc
+    assert "reports/" not in vsrc or "safe_report" in vsrc

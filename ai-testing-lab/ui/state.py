@@ -1,4 +1,4 @@
-"""Gestión centralizada de st.session_state (UI-1A … UI-1D)."""
+"""Gestión centralizada de st.session_state (UI-1A … UI-1E)."""
 
 from __future__ import annotations
 
@@ -91,6 +91,15 @@ def init_session_state() -> None:
         "rag_query_history": [],
         "rag_question": "",
         "rag_top_k": QUERY_TOP_K_DEFAULT,
+        # UI-1E Evaluaciones
+        "eval_selected_suite": None,
+        "eval_active_job_id": None,
+        "eval_jobs": [],
+        "eval_selected_job_id": None,
+        "eval_request_in_progress": False,
+        "eval_last_error": None,
+        "eval_last_refresh": None,
+        "eval_history_filter": "todas",
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -200,3 +209,31 @@ def append_rag_history_entry(entry: dict[str, Any]) -> None:
     history = list(st.session_state.rag_query_history or [])
     history.insert(0, entry)
     st.session_state.rag_query_history = history[:RAG_HISTORY_LIMIT]
+
+
+def set_eval_jobs(jobs: list[dict[str, Any]]) -> None:
+    st.session_state.eval_jobs = list(jobs)
+    st.session_state.eval_last_refresh = format_ui_timestamp()
+
+
+def upsert_eval_job(job: dict[str, Any]) -> None:
+    jobs = list(st.session_state.eval_jobs or [])
+    jid = job.get("job_id")
+    replaced = False
+    for i, existing in enumerate(jobs):
+        if existing.get("job_id") == jid:
+            jobs[i] = job
+            replaced = True
+            break
+    if not replaced:
+        jobs.insert(0, job)
+    st.session_state.eval_jobs = jobs
+    st.session_state.eval_last_refresh = format_ui_timestamp()
+
+
+def clear_eval_errors() -> None:
+    st.session_state.eval_last_error = None
+
+
+def reset_eval_request_flag() -> None:
+    st.session_state.eval_request_in_progress = False

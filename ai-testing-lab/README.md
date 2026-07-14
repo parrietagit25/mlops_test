@@ -37,8 +37,9 @@ y flujo, está en `docs/diagram.md` ("AI Testing Lab Architecture").
   ModelScan (documentado, uso bajo demanda).
 - **Observabilidad**: Arize Phoenix (trazas OTLP de cada llamada al modelo).
 - **UI Streamlit local** (`ailab-ui`, puerto 8501): cliente HTTP del Gateway.
-  Páginas operativas: **Inicio**, **Chat** (UI-1B), **Skills** (UI-1C) y **RAG** (UI-1D).
-  El resto son placeholders (Evaluaciones…Arquitectura).
+  Páginas operativas: **Inicio**, **Chat** (UI-1B), **Skills** (UI-1C), **RAG** (UI-1D)
+  y **Evaluaciones** (UI-1E).
+  El resto son placeholders (Reportes…Arquitectura).
 - **Scripts de automatización** para levantar, probar y validar todo.
 
 ## Requisitos
@@ -107,9 +108,11 @@ docker compose up -d
 # Phoenix: http://127.0.0.1:6006
 ```
 
-**Limitaciones actuales:** Inicio, Chat (UI-1B), Skills (UI-1C) y RAG (UI-1D)
-están operativos. Evaluaciones, Reportes, Observabilidad y Arquitectura siguen
-como placeholders (UI-1E…UI-1G).
+**Limitaciones actuales:** Inicio, Chat (UI-1B), Skills (UI-1C), RAG (UI-1D) y
+Evaluaciones (UI-1E) están operativos en la UI. Reportes, Observabilidad y
+Arquitectura siguen como placeholders (UI-1F…UI-1G). El **runtime** de
+evaluaciones sigue parcialmente degradado (Promptfoo/garak ausentes en
+`ailab-api`; jobs in-memory).
 
 ### Módulo Chat (UI-1B)
 
@@ -144,6 +147,24 @@ como placeholders (UI-1E…UI-1G).
 - Fuentes: se muestra el conteo real de chunks y una lista de **fuentes únicas** (orden de primera aparición).
 - Historial de consultas solo en `st.session_state` (máx. 20). Limpiar RAG no afecta Chat ni Skills.
 - Sin vector database, sin borrado de documentos desde la UI, sin persistencia.
+
+### Módulo Evaluaciones (UI-1E)
+
+- Propósito: encolar suites autorizadas y consultar jobs vía Gateway.
+- Arquitectura: Streamlit → `POST /evals/{suite}/run` · `GET /evals/jobs` ·
+  `GET /evals/jobs/{job_id}` → Job Manager in-memory → runners (scripts fijos).
+- Suites en whitelist: `promptfoo`, `deepeval`, `ragas`, `security`, `all`.
+- Streamlit **no** ejecuta scripts, **no** usa `subprocess` ni lee `reports/`.
+- Actualización manual: botones «Actualizar job» y «Actualizar historial» (sin polling infinito).
+- Estados: `queued`, `running`, `completed`, `failed` (`cancelled` solo si el contrato lo devuelve).
+  Si el resumen indica omisiones, la UI muestra «Completado con limitaciones».
+- Reportes: solo referencia (`report_ref`) y enlace público al Gateway (`GET /reports/{id}`).
+  Visor completo en UI-1F.
+- Jobs in-memory: se pierden al reiniciar `ailab-api`. Sin cancelación ni persistencia.
+- Disponibilidad documentada en tarjetas:
+  - **Promptfoo**: no disponible (sin Node/npx en imagen API).
+  - **Security**: degradada (garak ausente; promptfoo redteam omitido sin npx).
+  - **DeepEval / Ragas / all**: degradadas (venv/deps; `all` hereda omisiones).
 
 Limitaciones del Gateway: Promptfoo/garak no están en la imagen API; jobs de eval
 in-memory; `trace_id` puede ser `null`; la suite `security` no siempre

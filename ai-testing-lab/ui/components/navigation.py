@@ -8,7 +8,6 @@ from state import PAGE_KEYS, PAGE_HOME
 
 # Etapas futuras — solo informativo; sin botones operativos.
 _PENDING_STAGE = {
-    "Evaluaciones": "UI-1E",
     "Reportes": "UI-1F",
     "Observabilidad": "UI-1F",
     "Arquitectura": "UI-1G",
@@ -44,6 +43,8 @@ def render_sidebar() -> str:
         st.sidebar.caption("Módulo operativo (UI-1C · Skills).")
     elif active == "RAG":
         st.sidebar.caption("Módulo operativo (UI-1D · RAG).")
+    elif active == "Evaluaciones":
+        st.sidebar.caption("Módulo operativo (UI-1E · Evaluaciones).")
     else:
         st.sidebar.caption("Módulo operativo (UI-1A).")
 
