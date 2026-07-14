@@ -30,6 +30,8 @@ class UIConfig:
     # Timeout para crear job de eval (POST rápido) y consultar estado.
     eval_create_timeout_s: float
     eval_read_timeout_s: float
+    # Timeout de lectura para GET /reports*.
+    reports_read_timeout_s: float
     status_cache_ttl_s: int
     # Zona horaria opcional para timestamps de UI (ej. America/Panama).
     ui_timezone: str
@@ -52,6 +54,7 @@ def load_config() -> UIConfig:
         rag_read_timeout_s=float(os.getenv("AILAB_RAG_READ_TIMEOUT", "180")),
         eval_create_timeout_s=float(os.getenv("AILAB_EVAL_CREATE_TIMEOUT", "30")),
         eval_read_timeout_s=float(os.getenv("AILAB_EVAL_READ_TIMEOUT", "15")),
+        reports_read_timeout_s=float(os.getenv("AILAB_REPORTS_READ_TIMEOUT", "30")),
         status_cache_ttl_s=int(os.getenv("AILAB_STATUS_CACHE_TTL", "30")),
         ui_timezone=os.getenv("AILAB_UI_TIMEZONE", "UTC").strip() or "UTC",
     )

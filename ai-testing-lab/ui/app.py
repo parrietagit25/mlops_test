@@ -11,6 +11,7 @@ UI-1B: Chat funcional vía POST /chat (sin acceso directo a Ollama).
 UI-1C: Skills vía GET /skills y POST /agents/{skill}/run.
 UI-1D: RAG vía /rag/status, /rag/ingest y /rag/query.
 UI-1E: Evaluaciones vía /evals/{suite}/run y /evals/jobs.
+UI-1F: Reportes (/reports*) y Observabilidad (/observability).
 """
 
 from __future__ import annotations
@@ -75,8 +76,8 @@ ROUTES = {
     "Skills": lambda: skills.render(client, cfg),
     "RAG": lambda: rag.render(client, cfg),
     "Evaluaciones": lambda: evaluations.render(client, cfg),
-    "Reportes": reports.render,
-    "Observabilidad": observability.render,
+    "Reportes": lambda: reports.render(client, cfg),
+    "Observabilidad": lambda: observability.render(client, cfg),
     "Arquitectura": architecture.render,
 }
 

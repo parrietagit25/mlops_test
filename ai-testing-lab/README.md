@@ -37,9 +37,9 @@ y flujo, está en `docs/diagram.md` ("AI Testing Lab Architecture").
   ModelScan (documentado, uso bajo demanda).
 - **Observabilidad**: Arize Phoenix (trazas OTLP de cada llamada al modelo).
 - **UI Streamlit local** (`ailab-ui`, puerto 8501): cliente HTTP del Gateway.
-  Páginas operativas: **Inicio**, **Chat** (UI-1B), **Skills** (UI-1C), **RAG** (UI-1D)
-  y **Evaluaciones** (UI-1E).
-  El resto son placeholders (Reportes…Arquitectura).
+  Páginas operativas: **Inicio**, **Chat** (UI-1B), **Skills** (UI-1C), **RAG** (UI-1D),
+  **Evaluaciones** (UI-1E), **Reportes** y **Observabilidad** (UI-1F).
+  Placeholder restante: Arquitectura (UI-1G).
 - **Scripts de automatización** para levantar, probar y validar todo.
 
 ## Requisitos
@@ -108,11 +108,10 @@ docker compose up -d
 # Phoenix: http://127.0.0.1:6006
 ```
 
-**Limitaciones actuales:** Inicio, Chat (UI-1B), Skills (UI-1C), RAG (UI-1D) y
-Evaluaciones (UI-1E) están operativos en la UI. Reportes, Observabilidad y
-Arquitectura siguen como placeholders (UI-1F…UI-1G). Tras **EVAL-RUNTIME-1**,
-DeepEval y Ragas usan venvs horneados en `ailab-api`; Promptfoo/garak siguen
-ausentes; jobs de eval aislados por `job_id` (in-memory).
+**Limitaciones actuales:** Inicio, Chat, Skills, RAG, Evaluaciones, Reportes y
+Observabilidad están operativos en la UI. Arquitectura sigue como placeholder
+(UI-1G). Runtime de evals: DeepEval/Ragas operativos en Docker; Promptfoo/garak
+ausentes; jobs in-memory.
 
 ### Módulo Chat (UI-1B)
 
@@ -171,6 +170,22 @@ ausentes; jobs de eval aislados por `job_id` (in-memory).
 Limitaciones del Gateway: Promptfoo/garak no están en la imagen API; jobs de eval
 in-memory y por directorio `/tmp/ailab_run/<job_id>/`; `trace_id` puede ser `null`.
 El modelo pequeño local puede tener calidad limitada.
+
+### Módulo Reportes (UI-1F)
+
+- Propósito: listar y leer reportes de evaluación vía Gateway.
+- Arquitectura: Streamlit → `GET /reports` · `/reports/latest` · `/reports/{id}` ·
+  `/reports/{id}/files/{filename}` → `reports/` (solo en API).
+- `report_id`: formato `YYYY-MM-DD_HHMMSS`. Archivos relativos con extensiones
+  `.md .txt .log .csv .json .html`.
+- Visor en texto plano (incluso `.html`); sin `unsafe_allow_html`.
+- Streamlit **no** lee `reports/` del host; actualización manual.
+
+### Módulo Observabilidad (UI-1F)
+
+- Propósito: mostrar estado de Phoenix según `GET /observability`.
+- Enlace a la UI de Phoenix (`127.0.0.1:6006`); sin proxy OTLP desde Streamlit.
+- `trace_id` en Chat puede seguir siendo null.
 
 ## Correr las suites de evaluación
 

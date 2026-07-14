@@ -1,4 +1,4 @@
-"""Gestión centralizada de st.session_state (UI-1A … UI-1E)."""
+"""Gestión centralizada de st.session_state (UI-1A … UI-1F)."""
 
 from __future__ import annotations
 
@@ -37,6 +37,7 @@ DEFAULT_MAX_TOKENS = 512
 CHAT_MODELS_TTL_S = 30
 SKILLS_LIST_TTL_S = 30
 RAG_STATUS_TTL_S = 30
+OBS_TTL_S = 30
 
 
 def format_ui_timestamp(tz_name: str = "UTC") -> str:
@@ -100,6 +101,23 @@ def init_session_state() -> None:
         "eval_last_error": None,
         "eval_last_refresh": None,
         "eval_history_filter": "todas",
+        # UI-1F Reportes
+        "reports_list": [],
+        "reports_list_count": 0,
+        "reports_latest": None,
+        "reports_latest_criterion": None,
+        "reports_selected_id": None,
+        "reports_selected_detail": None,
+        "reports_selected_file": None,
+        "reports_file_content": None,
+        "reports_last_error": None,
+        "reports_request_in_progress": False,
+        "reports_last_refresh": None,
+        "reports_suite_filter": "todas",
+        # UI-1F Observabilidad
+        "obs_payload": None,
+        "obs_last_error": None,
+        "obs_fetched_at": 0.0,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -237,3 +255,25 @@ def clear_eval_errors() -> None:
 
 def reset_eval_request_flag() -> None:
     st.session_state.eval_request_in_progress = False
+
+
+def mark_reports_refreshed() -> None:
+    st.session_state.reports_last_refresh = format_ui_timestamp()
+
+
+def clear_reports_errors() -> None:
+    st.session_state.reports_last_error = None
+
+
+def clear_reports_viewer() -> None:
+    """Limpia selección de reporte/archivo; no toca Chat/Skills/RAG/Evals."""
+    st.session_state.reports_selected_id = None
+    st.session_state.reports_selected_detail = None
+    st.session_state.reports_selected_file = None
+    st.session_state.reports_file_content = None
+    st.session_state.reports_last_error = None
+    st.session_state.reports_request_in_progress = False
+
+
+def clear_obs_error() -> None:
+    st.session_state.obs_last_error = None

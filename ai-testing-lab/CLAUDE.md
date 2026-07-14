@@ -18,29 +18,24 @@ qué no se debe romper y cuál es el siguiente paso exacto.
 | Qué no es | Solo un chatbot; no entrena modelos desde cero en Fase 1; no es multi-cloud aún |
 | Arquitectura | Navegador → Streamlit → FastAPI Gateway → Ollama / Skills / RAG / Evals / Reports → Phoenix |
 | UI operativa | Inicio, Chat, Skills, RAG, Evaluaciones |
-| UI pendiente | Reportes, Observabilidad (UI-1F), Arquitectura visual (UI-1G), cierre UI-1H |
+| UI pendiente | Arquitectura visual (UI-1G), cierre UI-1H |
 | HEAD versionado | Verificar con `git rev-parse --short HEAD` |
-| Working tree | Puede incluir cambios EVAL-RUNTIME-1 sin commit |
-| Runtime evals | **EVAL-RUNTIME-1:** DeepEval/Ragas operativos en Docker; Promptfoo/garak ausentes; jobs aislados por `job_id` |
-| Baseline tests | API **41** · UI **95**; verificar tras cambios |
-| Fase 2 | Solo diseño en `infra/future/` y `docs/phase-2-multicloud.md` — **no iniciada** |
+| Working tree | Puede incluir cambios UI-1F sin commit |
+| Runtime evals | DeepEval/Ragas operativos; Promptfoo/garak ausentes |
+| Baseline tests | API **41** · UI **109** (UI-1F); verificar |
+| Fase 2 | Solo diseño — **no iniciada** |
 
-**Conclusión actual:** UI-1E funcional; **EVAL-RUNTIME-1** repara DeepEval/Ragas y el
-aislamiento de jobs. Promptfoo/garak siguen ausentes (EVAL-RUNTIME-2). No declarar
-el subsistema de evals como plenamente operativo.
+**Conclusión actual:** UI hasta **UI-1F** (Reportes + Observabilidad mínima).
+Promptfoo/garak siguen fuera. No iniciar UI-1G sin completar UI-1F.
 
 ---
 
 ## Próxima sesión — empezar aquí
 
-Orden recomendado tras EVAL-RUNTIME-1:
-
-1. Confirmar tests + integración DeepEval/Ragas/Security (`report_ref`).
-2. Commit de checkpoint **EVAL-RUNTIME-1** (cuando el usuario lo autorice).
-3. Opcional: **EVAL-RUNTIME-2** (Node/Promptfoo y/o garak) — requiere autorización.
-4. **UI-1F** — Reportes y Observabilidad.
-5. **UI-1G** — Arquitectura visual.
-6. **UI-1H** — Seguridad, regresión y cierre de la Fase 1 UI.
+1. Commit de checkpoint **UI-1F** (cuando el usuario lo autorice).
+2. Opcional: **EVAL-RUNTIME-2** (Node/Promptfoo / garak).
+3. **UI-1G** — Arquitectura visual.
+4. **UI-1H** — Seguridad, regresión y cierre de la Fase 1 UI.
 
 ### EVAL-RUNTIME-1 (implementado en esta línea de trabajo)
 
@@ -192,7 +187,7 @@ servicio Compose `api`). Enlaces del navegador usan `127.0.0.1`.
 | **UI-1E — Evaluaciones** | Cerrada y versionada (`3e1c7d3`) |
 | **EVAL-RUNTIME-1** | Implementado (DeepEval/Ragas + aislamiento; sin Node/garak) |
 | EVAL-RUNTIME-2 | Pendiente (Node/Promptfoo / garak — autorización) |
-| UI-1F — Reportes y Observabilidad | Pendiente |
+| **UI-1F — Reportes y Observabilidad** | Implementado (puede estar sin commit) |
 | UI-1G — Arquitectura visual | Pendiente |
 | UI-1H — Seguridad y cierre Fase 1 UI | Pendiente |
 | Fase 2 multi-cloud | Solo diseño — **no iniciada** |
@@ -482,7 +477,7 @@ Checklist típico tras un cambio:
 | Suite | Tests |
 |---|---|
 | API (`app/tests`) | **41 passed** |
-| UI (`ui/tests`) | **95 passed** |
+| UI (`ui/tests`) | **109 passed** |
 
 Si el número crece por tests legítimos nuevos, actualizar este baseline.
 

@@ -359,3 +359,62 @@ class GatewayClient:
             pool=self.cfg.connect_timeout_s,
         )
         return self.get(f"/evals/jobs/{jid}", retry_once=False, timeout=timeout)
+
+    def _reports_timeout(self) -> httpx.Timeout:
+        return httpx.Timeout(
+            connect=self.cfg.connect_timeout_s,
+            read=self.cfg.reports_read_timeout_s,
+            write=self.cfg.reports_read_timeout_s,
+            pool=self.cfg.connect_timeout_s,
+        )
+
+    def list_reports(self) -> ApiResult:
+        """GET /reports."""
+        return self.get("/reports", retry_once=True, timeout=self._reports_timeout())
+
+    def get_latest_report(self) -> ApiResult:
+        """GET /reports/latest."""
+        return self.get(
+            "/reports/latest", retry_once=True, timeout=self._reports_timeout()
+        )
+
+    def get_report(self, report_id: str) -> ApiResult:
+        """GET /reports/{report_id} — report_id validado."""
+        try:
+            from reports_payload import validate_report_id
+
+            rid = validate_report_id(report_id)
+        except ValueError as exc:
+            return ApiResult(
+                ok=False,
+                status_code=None,
+                error_kind="client_error",
+                error_message=str(exc),
+            )
+        return self.get(
+            f"/reports/{rid}", retry_once=False, timeout=self._reports_timeout()
+        )
+
+    def get_report_file(self, report_id: str, filename: str) -> ApiResult:
+        """GET /reports/{report_id}/files/{filename} — paths validados."""
+        try:
+            from reports_payload import validate_report_filename, validate_report_id
+
+            rid = validate_report_id(report_id)
+            fname = validate_report_filename(filename)
+        except ValueError as exc:
+            return ApiResult(
+                ok=False,
+                status_code=None,
+                error_kind="client_error",
+                error_message=str(exc),
+            )
+        # filename ya validado; codificar cada segmento para URL sin alterar /
+        from urllib.parse import quote
+
+        encoded = "/".join(quote(part, safe="") for part in fname.split("/"))
+        return self.get(
+            f"/reports/{rid}/files/{encoded}",
+            retry_once=False,
+            timeout=self._reports_timeout(),
+        )

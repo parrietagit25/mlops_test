@@ -30,6 +30,7 @@ def _cfg(**overrides) -> UIConfig:
         rag_read_timeout_s=30.0,
         eval_create_timeout_s=30.0,
         eval_read_timeout_s=15.0,
+        reports_read_timeout_s=30.0,
         status_cache_ttl_s=30,
         ui_timezone="UTC",
     )
@@ -1153,3 +1154,208 @@ def test_no_shell_in_evals_payload():
     vsrc = open(ev.__file__, encoding="utf-8").read()
     assert "subprocess" not in vsrc
     assert "reports/" not in vsrc or "safe_report" in vsrc
+
+
+# ---------------------------------------------------------------------------
+# UI-1F Reportes + Observabilidad
+# ---------------------------------------------------------------------------
+
+from reports_payload import (  # noqa: E402
+    ReportPayloadError,
+    filter_reports_by_suite,
+    humanize_report_error,
+    parse_file_content,
+    parse_latest_report,
+    parse_observability,
+    parse_report_summary,
+    parse_reports_list,
+    validate_report_filename,
+    validate_report_id,
+)
+
+_REPORT = {
+    "report_id": "2026-07-14_052511",
+    "date": "2026-07-14",
+    "time": "052511",
+    "created_at": "2026-07-14T05:25:11+00:00",
+    "suites_present": ["deepeval", "ragas"],
+    "has_summary": True,
+    "summary_excerpt": "# Resumen",
+    "files": [
+        {"name": "summary.md", "size_bytes": 100, "content_type_hint": "text/markdown"},
+        {
+            "name": "deepeval/output.log",
+            "size_bytes": 50,
+            "content_type_hint": "text/plain",
+        },
+    ],
+    "total_size_bytes": 150,
+    "status": "available",
+}
+
+
+def test_list_reports_ok(monkeypatch):
+    captured = {}
+
+    def fake(self, method, url, **kwargs):
+        captured.update(method=method, url=url)
+        return _FakeResp(200, {"reports": [_REPORT], "count": 1})
+
+    monkeypatch.setattr(httpx.Client, "request", fake)
+    r = GatewayClient(_cfg()).list_reports()
+    assert r.ok
+    assert captured["url"].endswith("/reports")
+    reports, count, err = parse_reports_list(r.data)
+    assert err is None and count == 1 and reports[0]["report_id"] == _REPORT["report_id"]
+
+
+def test_get_latest_report_ok(monkeypatch):
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, **kwargs: _FakeResp(
+            200, {"criterion": "lex", "report": _REPORT}
+        ),
+    )
+    r = GatewayClient(_cfg()).get_latest_report()
+    assert r.ok
+    report, criterion, err = parse_latest_report(r.data)
+    assert err is None and report and criterion == "lex"
+
+
+def test_get_report_ok(monkeypatch):
+    captured = {}
+
+    def fake(self, method, url, **kwargs):
+        captured.update(url=url)
+        return _FakeResp(200, _REPORT)
+
+    monkeypatch.setattr(httpx.Client, "request", fake)
+    r = GatewayClient(_cfg()).get_report("2026-07-14_052511")
+    assert r.ok
+    assert captured["url"].endswith("/reports/2026-07-14_052511")
+
+
+def test_get_report_file_ok(monkeypatch):
+    captured = {}
+
+    def fake(self, method, url, **kwargs):
+        captured.update(url=url)
+        return _FakeResp(
+            200,
+            {
+                "report_id": "2026-07-14_052511",
+                "filename": "summary.md",
+                "media_type": "text/markdown",
+                "size_bytes": 10,
+                "truncated": False,
+                "content": "# ok",
+            },
+        )
+
+    monkeypatch.setattr(httpx.Client, "request", fake)
+    r = GatewayClient(_cfg()).get_report_file("2026-07-14_052511", "summary.md")
+    assert r.ok
+    assert "/reports/2026-07-14_052511/files/summary.md" in captured["url"]
+    content, err = parse_file_content(r.data)
+    assert err is None and content["content"] == "# ok"
+
+
+def test_report_id_and_filename_validation():
+    assert validate_report_id("2026-07-14_052511") == "2026-07-14_052511"
+    with pytest.raises(ReportPayloadError):
+        validate_report_id("../secret")
+    with pytest.raises(ReportPayloadError):
+        validate_report_id("bad")
+    assert validate_report_filename("promptfoo/output.log") == "promptfoo/output.log"
+    with pytest.raises(ReportPayloadError):
+        validate_report_filename("../etc/passwd")
+    with pytest.raises(ReportPayloadError):
+        validate_report_filename("evil.exe")
+    with pytest.raises(ReportPayloadError):
+        validate_report_filename("/abs/file.md")
+
+
+def test_get_report_rejects_bad_id():
+    r = GatewayClient(_cfg()).get_report("../x")
+    assert not r.ok and r.error_kind == "client_error"
+    r2 = GatewayClient(_cfg()).get_report_file("2026-07-14_052511", "../../etc/passwd")
+    assert not r2.ok
+
+
+@pytest.mark.parametrize("status", [400, 404, 503])
+def test_reports_http_errors(monkeypatch, status):
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, **kwargs: _FakeResp(
+            status, {"error": {"code": "E", "message": "fail"}}
+        ),
+    )
+    r = GatewayClient(_cfg()).get_report("2026-07-14_052511")
+    assert not r.ok and r.status_code == status
+
+
+def test_reports_timeout_and_invalid_json(monkeypatch):
+    def slow(self, method, url, **kwargs):
+        raise httpx.ReadTimeout("slow")
+
+    monkeypatch.setattr(httpx.Client, "request", slow)
+    assert GatewayClient(_cfg()).list_reports().error_kind == "timeout"
+
+    monkeypatch.setattr(
+        httpx.Client,
+        "request",
+        lambda self, method, url, **kwargs: _FakeResp(200, json_error=True),
+    )
+    assert GatewayClient(_cfg()).list_reports().error_kind == "invalid_json"
+
+
+def test_filter_reports_and_humanize():
+    filtered = filter_reports_by_suite([_REPORT], "ragas")
+    assert len(filtered) == 1
+    assert filter_reports_by_suite([_REPORT], "promptfoo") == []
+    assert "Gateway" in humanize_report_error(
+        error_kind="connection", error_code=None, error_message=None, status_code=None
+    )
+    assert "no existe" in humanize_report_error(
+        error_kind="client_error",
+        error_code="REPORT_NOT_FOUND",
+        error_message=None,
+        status_code=404,
+    ).lower()
+
+
+def test_parse_observability_loopback_only():
+    ok, err = parse_observability(
+        {"phoenix": {"enabled": True, "url": "http://127.0.0.1:6006", "status": "available"}}
+    )
+    assert err is None and ok["url"] == "http://127.0.0.1:6006"
+    blocked, err2 = parse_observability(
+        {"phoenix": {"enabled": True, "url": "http://evil.example", "status": "available"}}
+    )
+    assert err2 is None and blocked["url"] is None
+
+
+def test_reports_clear_keeps_other_modules():
+    chat = [{"role": "user", "content": "keep"}]
+    skills = [{"skill": "summarizer"}]
+    rag = [{"q": "x"}]
+    evals = [{"job_id": "a" * 32}]
+    reports_selected = "2026-07-14_052511"
+    reports_selected = None
+    assert chat and skills and rag and evals and reports_selected is None
+
+
+def test_no_shell_in_reports_modules():
+    import reports_payload as rp
+
+    src = open(rp.__file__, encoding="utf-8").read()
+    assert "subprocess" not in src
+    assert "os.system" not in src
+    assert "shell=True" not in src
+    import views.reports as vr
+
+    vsrc = open(vr.__file__, encoding="utf-8").read()
+    assert "subprocess" not in vsrc
+    assert "unsafe_allow_html" not in vsrc or "False" in vsrc
