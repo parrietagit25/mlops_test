@@ -7,9 +7,7 @@ import streamlit as st
 from state import PAGE_KEYS, PAGE_HOME
 
 # Etapas futuras — solo informativo; sin botones operativos.
-_PENDING_STAGE = {
-    "Arquitectura": "UI-1G",
-}
+_PENDING_STAGE: dict[str, str] = {}
 
 
 def render_sidebar() -> str:
@@ -47,6 +45,8 @@ def render_sidebar() -> str:
         st.sidebar.caption("Módulo operativo (UI-1F · Reportes).")
     elif active == "Observabilidad":
         st.sidebar.caption("Módulo operativo (UI-1F · Observabilidad).")
+    elif active == "Arquitectura":
+        st.sidebar.caption("Módulo operativo (UI-1G · Arquitectura).")
     else:
         st.sidebar.caption("Módulo operativo (UI-1A).")
 

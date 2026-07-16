@@ -17,27 +17,26 @@ qué no se debe romper y cuál es el siguiente paso exacto.
 | Qué es | Laboratorio local de AI Engineering / LLMOps (Fase 1) |
 | Qué no es | Solo un chatbot; no entrena modelos desde cero en Fase 1; no es multi-cloud aún |
 | Arquitectura | Navegador → Streamlit → FastAPI Gateway → Ollama / Skills / RAG / Evals / Reports → Phoenix |
-| UI operativa | Inicio, Chat, Skills, RAG, Evaluaciones |
-| UI pendiente | Arquitectura visual (UI-1G), cierre UI-1H |
+| UI operativa | Inicio, Chat, Skills, RAG, Evaluaciones, Reportes, Observabilidad, Arquitectura |
+| UI pendiente | **UI-1H** (seguridad / regresión / cierre Fase 1 UI) |
 | HEAD versionado | Verificar con `git rev-parse --short HEAD` |
-| Working tree | Puede incluir cambios UI-1F sin commit |
+| Working tree | Puede incluir checkpoint UI-1G sin commit |
 | Runtime evals | DeepEval/Ragas operativos; Promptfoo/garak ausentes |
-| Baseline tests | API **41** · UI **109** (UI-1F); verificar |
+| Baseline tests | API **41** · UI **112** |
 | Fase 2 | Solo diseño — **no iniciada** |
 
-**Conclusión actual:** UI hasta **UI-1F** (Reportes + Observabilidad mínima).
-Promptfoo/garak siguen fuera. No iniciar UI-1G sin completar UI-1F.
+**Conclusión actual:** **UI-1G** (Arquitectura) validado. Siguiente: **UI-1H**.
+Promptfoo/garak siguen fuera.
 
 ---
 
 ## Próxima sesión — empezar aquí
 
-1. Commit de checkpoint **UI-1F** (cuando el usuario lo autorice).
-2. Opcional: **EVAL-RUNTIME-2** (Node/Promptfoo / garak).
-3. **UI-1G** — Arquitectura visual.
-4. **UI-1H** — Seguridad, regresión y cierre de la Fase 1 UI.
+1. Commit de checkpoint **UI-1G** (cuando el usuario lo autorice).
+2. **UI-1H** — Seguridad, regresión y cierre de la Fase 1 UI.
+3. Opcional: **EVAL-RUNTIME-2** (Node/Promptfoo / garak).
 
-### EVAL-RUNTIME-1 (implementado en esta línea de trabajo)
+### EVAL-RUNTIME-1 (implementado)
 
 - DeepEval / Ragas: venvs en `/opt/ailab/venvs/` horneados en la imagen API.
 - Jobs: `/tmp/ailab_run/<job_id>/` (sin race por `rmtree` compartido).
@@ -50,13 +49,12 @@ Promptfoo/garak siguen fuera. No iniciar UI-1G sin completar UI-1F.
 - Decidir e instalar garak si se requiere red teaming real.
 - Revalidar Run All hacia más suites verdes.
 
-### Después de EVAL-RUNTIME-*
+### UI cerrada hasta UI-1G
 
-1. **UI-1F** — Reportes y Observabilidad.
-2. **UI-1G** — Arquitectura visual.
-3. **UI-1H** — Seguridad, regresión y cierre de la Fase 1 UI.
+- UI-1B…UI-1G implementados y validados (Arquitectura = mapa + `/system/status`).
+- Queda **UI-1H**.
 
-**No iniciar UI-1F, cloud, ni instalación de modelos/herramientas pesadas
+**No iniciar Fase 2 cloud ni instalación de modelos/herramientas pesadas
 sin autorización explícita.**
 
 ---
@@ -187,8 +185,8 @@ servicio Compose `api`). Enlaces del navegador usan `127.0.0.1`.
 | **UI-1E — Evaluaciones** | Cerrada y versionada (`3e1c7d3`) |
 | **EVAL-RUNTIME-1** | Implementado (DeepEval/Ragas + aislamiento; sin Node/garak) |
 | EVAL-RUNTIME-2 | Pendiente (Node/Promptfoo / garak — autorización) |
-| **UI-1F — Reportes y Observabilidad** | Implementado (puede estar sin commit) |
-| UI-1G — Arquitectura visual | Pendiente |
+| **UI-1F — Reportes y Observabilidad** | Cerrada y versionada |
+| **UI-1G — Arquitectura visual** | Validado (UI 112); commit cuando el usuario lo autorice |
 | UI-1H — Seguridad y cierre Fase 1 UI | Pendiente |
 | Fase 2 multi-cloud | Solo diseño — **no iniciada** |
 
@@ -211,13 +209,13 @@ ai-testing-lab/
 │   ├── services/             # job_manager, eval_runner, report_store, …
 │   ├── schemas/
 │   ├── core/
-│   └── tests/                # suite API (baseline 38)
+│   └── tests/                # suite API (baseline 41)
 ├── ui/                       # Streamlit (solo HTTP)
 │   ├── app.py
 │   ├── api_client.py
 │   ├── *_payload.py
 │   ├── views/                # NO pages/ (evita nav multipágina automática)
-│   └── tests/                # suite UI (baseline 95 en UI-1E)
+│   └── tests/                # suite UI (baseline 112 post UI-1G)
 ├── evals/                    # promptfoo, deepeval, ragas, security
 ├── scripts/                  # bootstrap, up, down, health, run_*_evals
 ├── reports/                  # salidas de evaluación (solo vía Gateway en UI)
@@ -472,12 +470,12 @@ Checklist típico tras un cambio:
 - [ ] Contratos OpenAPI coherentes
 - [ ] Estado final de Git acordado con el usuario
 
-**Baseline verificado (UI-1E):**
+**Baseline verificado (UI-1G):**
 
 | Suite | Tests |
 |---|---|
 | API (`app/tests`) | **41 passed** |
-| UI (`ui/tests`) | **109 passed** |
+| UI (`ui/tests`) | **112 passed** |
 
 Si el número crece por tests legítimos nuevos, actualizar este baseline.
 

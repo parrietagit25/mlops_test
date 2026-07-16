@@ -1359,3 +1359,45 @@ def test_no_shell_in_reports_modules():
     vsrc = open(vr.__file__, encoding="utf-8").read()
     assert "subprocess" not in vsrc
     assert "unsafe_allow_html" not in vsrc or "False" in vsrc
+
+
+# ---------------------------------------------------------------------------
+# UI-1G Arquitectura
+# ---------------------------------------------------------------------------
+
+
+def test_architecture_view_has_no_shell_or_filesystem():
+    import views.architecture as arch
+
+    src = open(arch.__file__, encoding="utf-8").read()
+    assert "subprocess" not in src
+    assert "os.system" not in src
+    assert "shell=True" not in src
+    assert "Path(" not in src
+    assert "Streamlit" in src
+    assert "FastAPI" in src or "Gateway" in src
+
+
+def test_architecture_mermaid_mentions_gateway_flow():
+    import views.architecture as arch
+
+    assert "Browser" in arch._ARCHITECTURE_MERMAID
+    assert "API" in arch._ARCHITECTURE_MERMAID
+    assert "Phoenix" in arch._ARCHITECTURE_MERMAID
+
+
+def test_architecture_component_map_normalizes():
+    from views.architecture import _component_map
+
+    data = {
+        "gateway": "ok",
+        "components": [
+            {"name": "ollama", "status": "available"},
+            {"name": "phoenix", "status": "unavailable"},
+        ],
+    }
+    m = _component_map(data)
+    assert m["gateway"] == "available"
+    assert m["ollama"] == "available"
+    assert m["phoenix"] == "unavailable"
+    assert _component_map(None) == {}

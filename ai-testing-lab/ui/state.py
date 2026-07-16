@@ -118,6 +118,9 @@ def init_session_state() -> None:
         "obs_payload": None,
         "obs_last_error": None,
         "obs_fetched_at": 0.0,
+        # UI-1G Arquitectura
+        "arch_system": None,
+        "arch_error": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:

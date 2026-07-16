@@ -37,9 +37,9 @@ y flujo, está en `docs/diagram.md` ("AI Testing Lab Architecture").
   ModelScan (documentado, uso bajo demanda).
 - **Observabilidad**: Arize Phoenix (trazas OTLP de cada llamada al modelo).
 - **UI Streamlit local** (`ailab-ui`, puerto 8501): cliente HTTP del Gateway.
-  Páginas operativas: **Inicio**, **Chat** (UI-1B), **Skills** (UI-1C), **RAG** (UI-1D),
-  **Evaluaciones** (UI-1E), **Reportes** y **Observabilidad** (UI-1F).
-  Placeholder restante: Arquitectura (UI-1G).
+  Páginas operativas: **Inicio**, **Chat**, **Skills**, **RAG**, **Evaluaciones**,
+  **Reportes**, **Observabilidad** y **Arquitectura** (UI-1G).
+  Cierre formal de la Fase 1 UI: UI-1H.
 - **Scripts de automatización** para levantar, probar y validar todo.
 
 ## Requisitos
@@ -108,10 +108,9 @@ docker compose up -d
 # Phoenix: http://127.0.0.1:6006
 ```
 
-**Limitaciones actuales:** Inicio, Chat, Skills, RAG, Evaluaciones, Reportes y
-Observabilidad están operativos en la UI. Arquitectura sigue como placeholder
-(UI-1G). Runtime de evals: DeepEval/Ragas operativos en Docker; Promptfoo/garak
-ausentes; jobs in-memory.
+**Limitaciones actuales:** Toda la navegación UI está operativa hasta Arquitectura
+(UI-1G). Queda UI-1H (cierre/seguridad/regresión). Runtime: DeepEval/Ragas OK;
+Promptfoo/garak ausentes; jobs in-memory.
 
 ### Módulo Chat (UI-1B)
 
@@ -186,6 +185,14 @@ El modelo pequeño local puede tener calidad limitada.
 - Propósito: mostrar estado de Phoenix según `GET /observability`.
 - Enlace a la UI de Phoenix (`127.0.0.1:6006`); sin proxy OTLP desde Streamlit.
 - `trace_id` en Chat puede seguir siendo null.
+
+### Módulo Arquitectura (UI-1G)
+
+- Propósito: mapa del laboratorio (flujo, capas, puertos, módulos UI).
+- Aclara que la imagen de inspiración MLOps **no** es la arquitectura real.
+- Estado en vivo opcional vía `GET /system/status` (Gateway / Ollama / Phoenix).
+- Enlaces solo a OpenAPI y Phoenix desde configuración del servidor.
+- Fase 2 multi-cloud marcada como roadmap, no implementada.
 
 ## Correr las suites de evaluación
 

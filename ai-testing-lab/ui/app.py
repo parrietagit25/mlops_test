@@ -12,6 +12,7 @@ UI-1C: Skills vía GET /skills y POST /agents/{skill}/run.
 UI-1D: RAG vía /rag/status, /rag/ingest y /rag/query.
 UI-1E: Evaluaciones vía /evals/{suite}/run y /evals/jobs.
 UI-1F: Reportes (/reports*) y Observabilidad (/observability).
+UI-1G: Arquitectura (mapa del laboratorio + estado Gateway).
 """
 
 from __future__ import annotations
@@ -78,7 +79,7 @@ ROUTES = {
     "Evaluaciones": lambda: evaluations.render(client, cfg),
     "Reportes": lambda: reports.render(client, cfg),
     "Observabilidad": lambda: observability.render(client, cfg),
-    "Arquitectura": architecture.render,
+    "Arquitectura": lambda: architecture.render(client, cfg),
 }
 
 ROUTES.get(page, ROUTES["Inicio"])()
